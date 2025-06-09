@@ -1,0 +1,348 @@
+@font-face {
+  font-family: 'MyCustomFont';
+  src: url('/home/aditya-gothiwarekar/client/public/assets/Quicksandfontone/Quicksand-VariableFont_wght.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'MyCustomFontmedium';
+  src: url('/home/aditya-gothiwarekar/client/public/assets/Quicksandfontone/static/Quicksand-Medium.ttf') format('truetype');
+}
+
+body {
+  font-family: 'MyCustomFont', Arial, sans-serif;
+  background-color: #c9c8c8;
+  margin: 0;
+  padding: 0;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.content {
+  flex: 1;
+}
+
+.header {
+  background-image: url('');
+  background-color: #232f3d;
+  border-bottom: 0.3125rem solid #88c6db;
+}
+
+.logoheader {
+  padding: 0.625rem;
+  margin-left: 1.875rem;
+}
+
+.content {
+  margin-top: 3.125rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-container {
+  font-family: "MyCustomFont";
+  background-color: #fff;
+  padding: 0.5rem 1.5625rem;
+  border-radius: 0.3125rem;
+  border-top: 0.3125rem solid rgba(80,199,229,255);
+  width: 32.5rem;
+  height: 39.375rem;
+  box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.1);
+}
+
+.login-container h2 {
+  margin-bottom: 0.3125rem;
+  text-align: center;
+}
+
+.form-group {
+  margin-bottom: 1.5625rem;
+  margin-left: 1.875rem;
+}
+
+.form-group label {
+  font-size: 0.75rem;
+  display: block;
+  margin-bottom: 0.3125rem;
+  color: #666666;
+}
+
+input[type="password"]::-webkit-password-toggle-button {
+  display: none !important;
+}
+
+input[type="password"]::-ms-reveal {
+  display: none !important;
+}
+
+.form-group input,
+.form-group select {
+  font-family: "MyCustomFontmedium";
+  width: 26.5rem;
+  padding: 0.625rem 0.3125rem;
+  border: 0;
+  border-bottom: 0.125rem solid #ccc;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+select {
+  font-family: "MyCustomFontmedium";
+  background-color: #fff;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url('/home/aditya-gothiwarekar/client/public/assets/icons/arrow-down.svg');
+  background-repeat: no-repeat;
+  background-position: right 0.625rem center;
+  background-size: 1rem 1rem;
+}
+
+.password-wrapper {
+  position: relative;
+  width: 26.5rem;
+}
+
+.password-wrapper input {
+  padding-right: 2.1875rem;
+}
+
+.toggle-password {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  z-index: 2;
+}
+
+.forgot-link {
+  display: block;
+  font-size: 0.85em;
+  color: #1F7A54;
+  text-decoration: none;
+  font-family: "MyCustomFont";
+  text-transform: uppercase;
+  text-align: right;
+  width: 26.5rem;
+  margin-top: 0.3125rem;
+  margin-left: 0.125rem;
+}
+
+.forgot-link:hover {
+  text-decoration: underline;
+}
+
+.radio-buttons {
+  display: flex;
+  gap: 1.875rem;
+  margin: 1.25rem 0 1.25rem 1.875rem;
+}
+
+.radio-buttons input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.custom-radio {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.radio-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-right: 0.5rem;
+  transition: transform 0.2s ease;
+}
+
+.custom-radio:hover .radio-icon {
+  transform: scale(1.1);
+}
+
+.checkbox-group {
+  width: auto !important;
+  display: flex;
+  align-items: center;
+  color: #222222;
+}
+
+.checkbox-label {
+  font-family: 'MyCustomFontmedium';
+  font-size: 1rem !important;
+  color: #222222;
+  display: flex !important;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.checkbox-label input[type="checkbox"] {
+  display: none;
+}
+
+.checkbox-label input[type="checkbox"] {
+  margin: 0;
+  accent-color: #1F7A54;
+}
+
+.btn {
+  margin-left: 20%;
+  font-family: "MyCustomFontmedium";
+  font-size: 0.875rem;
+  width: 13.47rem;
+  height: 2.5rem;
+  margin-top: 1.25rem;
+  padding: 0.625rem;
+  background-color: #3FD28B;
+  color: #1F2834;
+  border: none;
+  border-radius: 0.3125rem;
+  cursor: pointer;
+  box-shadow: 0rem 0.1875rem 0.3125rem #0000003D;
+}
+
+.btn:hover {
+  background-color: #218838;
+}
+
+.links {
+  text-align: center;
+  margin-top: 0.9375rem;
+  font-family: "MyCustomFont";
+}
+
+.links a {
+  color: #1F7A54;
+  text-decoration: none;
+  font-size: 0.9em;
+}
+
+.links a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 600px) {
+  .login-container {
+    width: 90%;
+    height: auto;
+    padding: 1.25rem;
+  }
+.login-header{
+    gap: 2rem ;
+}
+  .form-group input,
+  .form-group select,
+  .password-wrapper,
+  .forgot-link {
+    width: 100%;
+  }
+
+  .btn {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
+.footer-links {
+  text-align: center;
+  margin-top: 1.25rem;
+  font-family: 'MyCustomFontmedium';
+  font-size: 0.875rem;
+  font-weight: 400;
+  padding: 1.25rem;
+  color: #1F7A54;
+}
+
+.footer-links a {
+  color: #1F7A54;
+  text-decoration: none;
+  margin: 0 0.625rem;
+}
+
+.footer-links a:hover {
+  text-decoration: underline;
+}
+
+.footer {
+  background-color: #E0E1E1;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: #555;
+  gap: 0.125rem;
+}
+
+.footer-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  color: #666666;
+}
+
+.footer-logo {
+  width: 7.5rem;
+  padding-right: 0.9375rem;
+}
+
+.footer-brand {
+  font-weight: 600;
+  color: #333;
+}
+
+.footer-text {
+  font-family: 'MyCustomFontmedium';
+  color: #616161;
+  font-weight: 400;
+  gap: 0.125rem;
+}
+
+.footer-separator {
+  padding-right: 0.9375rem;
+  color: #838585;
+  font-size: 1.25rem;
+  font-weight: 100;
+  font-family: Arial, sans-serif;
+  display: inline-block;
+  line-height: 1;
+}
+
+.login-header {
+  display: flex;
+  align-items: center;
+  gap: 5rem;
+  margin-top: 0.625rem;
+  margin-bottom: 1.5625rem;
+  margin-left: 1.5625rem;
+}
+
+.back-arrow {
+  margin-top: 1rem;
+  width: 1.875rem;
+  height: 1.875rem;
+  cursor: pointer;
+}
+
+.company-name {
+  margin-left: 0.3125rem;
+  margin-right: 0.3125rem;
+}
+
+.username-group {
+  margin-top: 0.625rem !important;
+  margin-bottom: 1.5625rem;
+  margin-left: 1.875rem;
+}
+@media (max-width: 500px) {
+  .login-header {
+    gap: 1rem;
+  }
+    
+}
