@@ -4,6 +4,7 @@ html, body {
   font-size: 16px; 
   margin: 0;
   padding: 0;
+  overflow-x: hidden;
 }
 
 .page-container {
@@ -278,6 +279,7 @@ body {
   justify-content: space-around;
   align-items: center;
   padding-top: 0.625rem; 
+  padding-bottom: 0.625rem;
   border-top: 1px solid #ccc;
   width: 100%;
   gap: 1.25rem; 
@@ -414,8 +416,38 @@ body {
 
   .course-card {
     width: 571px;
-height: 246px;
+height: auto;
   }
+  .mobile-menu {
+  display: flex;
+  flex-direction: column;
+  background-color: white;
+  position: absolute;
+  overflow: hidden;
+  top: 60px;
+  right: 0;
+  left: 0;
+  z-index: 1000;
+  padding: 1rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.mobile-menu a {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #eee;
+  font-weight: bold;
+  color: #333;
+}
+
+.mobile-menu a:last-child {
+  border-bottom: none;
+}
+
+.mobile-menu a.active {
+  background-color: #007bff;
+  color: white;
+}
+
 }
 
 @media (max-width: 480px) {
@@ -464,6 +496,35 @@ height: 246px;
   display: none;
   cursor: pointer;
 }
+.mobile-menu {
+  display: flex;
+  flex-direction: column;
+  background-color: white;
+  position: absolute;
+  overflow: hidden;
+  top: 60px;
+  right: 0;
+  left: 0;
+  z-index: 1000;
+  padding: 1rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.mobile-menu a {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #eee;
+  font-weight: bold;
+  color: #333;
+}
+
+.mobile-menu a:last-child {
+  border-bottom: none;
+}
+
+.mobile-menu a.active {
+  background-color: #007bff;
+  color: white;
+}
 
 /* Mobile styles */
 @media (max-width: 768px) {
@@ -477,35 +538,36 @@ height: 246px;
     display: block;
   }
 
-  /* Mobile menu dropdown */
   .mobile-menu {
-    position: absolute;
-    top: 60px; /* adjust based on header height */
-    right: 10px;
-    background: white;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    border-radius: 4px;
-    z-index: 1000;
-    display: flex;
-    flex-direction: column;
-    min-width: 150px;
-  }
+  display: flex;
+  flex-direction: column;
+  background-color: white;
+  position: absolute;
+  overflow: hidden;
+  top: 60px;
+  right: 0;
+  left: 0;
+  z-index: 1000;
+  padding: 1rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
 
-  .mobile-menu a {
-    padding: 10px 15px;
-    border-bottom: 1px solid #ddd;
-    color: #333;
-    text-decoration: none;
-  }
+.mobile-menu a {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #eee;
+  font-weight: bold;
+  color: #333;
+}
 
-  .mobile-menu a:last-child {
-    border-bottom: none;
-  }
+.mobile-menu a:last-child {
+  border-bottom: none;
+}
 
-  .mobile-menu a.active {
-    background-color: #007bff;
-    color: white;
-  }
+.mobile-menu a.active {
+  background-color: #007bff;
+  color: white;
+}
+
 }
 .icon-with-badge {
   position: relative;
@@ -550,4 +612,41 @@ height: 246px;
   .mobile-menu {
     display: block;
   }
+  .mobile-menu {
+  display: flex;
+  flex-direction: column;
+  background-color: white;
+  position: absolute;
+  overflow: hidden;
+  top: 60px;
+  right: 0;
+  left: 0;
+  z-index: 1000;
+  padding: 1rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.mobile-menu a {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #eee;
+  font-weight: bold;
+  color: #333;
+}
+
+.mobile-menu a:last-child {
+  border-bottom: none;
+}
+
+.mobile-menu a.active {
+  background-color: #007bff;
+  color: white;
+}
+.fav-icon {
+  position: absolute;
+  top: 2.220rem;
+  right: 0.650rem; 
+   width: 0.625rem;
+  height: 0.625rem; 
+  cursor: pointer;
+}
 }
