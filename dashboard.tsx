@@ -151,15 +151,11 @@ const announcements: Announcement[] = [
 
   return (
     <div className="page-container">
-     <Header
+ <Header
   activeIndex={activeIndex}
   setActiveIndex={setActiveIndex}
   isMenuOpen={isMenuOpen}
   setIsMenuOpen={setIsMenuOpen}
-  isAlertOpen={isAlertOpen}
-  toggleAlerts={toggleAlerts}
-  isAnnouncementOpen={isAnnouncementOpen}
-  toggleAnnouncements={toggleAnnouncements}
   alerts={alerts}
   announcements={announcements}
 />
