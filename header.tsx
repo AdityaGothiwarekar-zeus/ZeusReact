@@ -1,6 +1,6 @@
-// src/Components/Header/Header.tsx
-import React from "react";
+import React, { useState, useRef } from "react";
 import "./dashboard.css";
+
 type Alert = {
   id: number;
   title: string;
@@ -20,16 +20,11 @@ type Announcement = {
   highlight?: boolean;
 };
 
-
 interface HeaderProps {
   activeIndex: number;
   setActiveIndex: React.Dispatch<React.SetStateAction<number>>;
   isMenuOpen: boolean;
   setIsMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  isAlertOpen: boolean;
-  toggleAlerts: () => void;
-  isAnnouncementOpen: boolean;
-  toggleAnnouncements: () => void;
   alerts: Alert[];
   announcements: Announcement[];
 }
@@ -39,60 +34,82 @@ const Header: React.FC<HeaderProps> = ({
   setActiveIndex,
   isMenuOpen,
   setIsMenuOpen,
-  isAlertOpen,
-  toggleAlerts,
-  isAnnouncementOpen,
-  toggleAnnouncements,
   alerts,
   announcements,
 }) => {
+  const [isAlertHovered, setIsAlertHovered] = useState(false);
+  const [isAnnouncementHovered, setIsAnnouncementHovered] = useState(false);
+  const alertTimeout = useRef<NodeJS.Timeout | null>(null);
+  const announcementTimeout = useRef<NodeJS.Timeout | null>(null);
+
   return (
     <div className="header-nav">
       <header className={`top-bar ${isMenuOpen ? "menu-open" : ""}`}>
         <div className="logo-section">
-          <img src="assets/icons/logo used in header.svg" alt="Quantum Logo" className="logo" />
+          <img
+            src="assets/icons/logo used in header.svg"
+            alt="Quantum Logo"
+            className="logo"
+          />
         </div>
 
         <div className="header-right">
           <nav className="top-nav">
             <div className="nav-links-desktop">
-              {["DASHBOARD", "CONTENT", "USERS", "REPORTS", "ADMIN"].map((label, index) => (
-                <a
-                  key={label}
-                  className={activeIndex === index ? "active" : ""}
-                  onClick={() => setActiveIndex(index)}
-                  style={{ cursor: "pointer" }}
-                >
-                  {label}
-                </a>
-              ))}
+              {["DASHBOARD", "CONTENT", "USERS", "REPORTS", "ADMIN"].map(
+                (label, index) => (
+                  <a
+                    key={label}
+                    className={activeIndex === index ? "active" : ""}
+                    onClick={() => setActiveIndex(index)}
+                    style={{ cursor: "pointer" }}
+                  >
+                    {label}
+                  </a>
+                )
+              )}
             </div>
           </nav>
 
           <div className="top-icons" style={{ position: "relative" }}>
-            {/* Alerts Icon */}
-            <div className="icon-with-badge" onClick={toggleAlerts}>
-              <img
-                src={
-                  isAlertOpen
-                    ? "assets/images/icons8-notification.svg"
-                    : "assets/icons/alerts.svg"
-                }
-                alt="Notifications"
-              />
-              {!isAlertOpen && <span className="badge">1</span>}
-              {isAlertOpen && (
+            {/* Alerts Dropdown */}
+            <div
+              className="icon-dropdown-wrapper"
+              onMouseEnter={() => {
+                if (alertTimeout.current) clearTimeout(alertTimeout.current);
+                setIsAlertHovered(true);
+              }}
+              onMouseLeave={() => {
+                alertTimeout.current = setTimeout(() => setIsAlertHovered(false), 150);
+              }}
+              style={{ padding: "10px" }}
+            >
+              <div className="icon-with-badge">
+                <img
+                  src={
+                    isAlertHovered
+                      ? "assets/images/icons8-notification.svg"
+                      : "assets/icons/alerts.svg"
+                  }
+                  alt="Notifications"
+                />
+                {!isAlertHovered && <span className="badge">1</span>}
+              </div>
+              {isAlertHovered && (
                 <div className="alert-dropdown-menu">
                   <div className="alert-scrollable">
                     {alerts.map((alert, idx) => (
                       <div
                         key={alert.id}
-                        className={`alert-card ${[1, 3, 5].includes(idx) ? "highlight" : ""}`}
+                        className={`alert-card ${
+                          [1, 3, 5].includes(idx) ? "highlight" : ""
+                        }`}
                       >
                         <div className="alert-title">{alert.title}</div>
                         {alert.desc && (
                           <div className="alert-subtext">
-                            {alert.label}: <span className="alert-value">{alert.desc}</span>
+                            {alert.label}:{" "}
+                            <span className="alert-value">{alert.desc}</span>
                           </div>
                         )}
                         <img
@@ -115,24 +132,41 @@ const Header: React.FC<HeaderProps> = ({
               )}
             </div>
 
-            {/* Announcements Icon */}
-            <div className="icon-with-badge" onClick={toggleAnnouncements}>
-              <img
-                src={
-                  isAnnouncementOpen
-                    ? "assets/icons/icons8-announcement-30.svg"
-                    : "assets/icons/announcements.svg"
-                }
-                alt="Announcements"
-              />
-              {!isAnnouncementOpen && <span className="badge">2</span>}
-              {isAnnouncementOpen && (
+            {/* Announcements Dropdown */}
+            <div
+              className="icon-dropdown-wrapper"
+              onMouseEnter={() => {
+                if (announcementTimeout.current) clearTimeout(announcementTimeout.current);
+                setIsAnnouncementHovered(true);
+              }}
+              onMouseLeave={() => {
+                announcementTimeout.current = setTimeout(
+                  () => setIsAnnouncementHovered(false),
+                  150
+                );
+              }}
+              style={{ padding: "10px" }}
+            >
+              <div className="icon-with-badge">
+                <img
+                  src={
+                    isAnnouncementHovered
+                      ? "assets/icons/icons8-announcement-30.svg"
+                      : "assets/icons/announcements.svg"
+                  }
+                  alt="Announcements"
+                />
+                {!isAnnouncementHovered && <span className="badge">2</span>}
+              </div>
+              {isAnnouncementHovered && (
                 <div className="announcement-dropdown">
                   <div className="announcement-scrollable">
                     {announcements.map((a) => (
                       <div
                         key={a.id}
-                        className={`announcement-item ${a.highlight ? "highlight" : ""}`}
+                        className={`announcement-item ${
+                          a.highlight ? "highlight" : ""
+                        }`}
                       >
                         <div className="announcement-text">
                           <div className="announcement-sender">{a.sender}</div>
@@ -180,13 +214,19 @@ const Header: React.FC<HeaderProps> = ({
                 alt="Profile"
                 style={{ borderRadius: "50%", border: "2px solid green" }}
               />
-              <span className="badge" style={{ backgroundColor: "white", color: "black" }}>
+              <span
+                className="badge"
+                style={{ backgroundColor: "white", color: "black" }}
+              >
                 T
               </span>
             </div>
 
             {/* Hamburger */}
-            <div className="hamburger-dropdown-menu" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+            <div
+              className="hamburger-dropdown-menu"
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+            >
               <img
                 src={
                   isMenuOpen
