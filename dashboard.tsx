@@ -179,3 +179,164 @@ const announcements: Announcement[] = [
 };
 
 export default Dashboard;
+import React, { useRef, useEffect, useState } from 'react';
+import './Grid.css';
+import Header from '../Navbar/Header';
+
+const ROWS_PER_PAGE = 200;
+const TOTAL_ROWS = 50000;
+const TOTAL_COLS = 100;
+const COL_WIDTH = 80;
+const ROW_HEIGHT = 24;
+const ROW_HEADER_WIDTH = 40;
+const COL_HEADER_HEIGHT = 24;
+const CANVAS_WIDTH = 1000;
+const CANVAS_HEIGHT = 600;
+
+function getColLetter(n) {
+  let s = '';
+  while (n >= 0) {
+    s = String.fromCharCode((n % 26) + 65) + s;
+    n = Math.floor(n / 26) - 1;
+  }
+  return s;
+}
+
+export default function GridPage() {
+  const canvasRef = useRef(null);
+  const [cellData, setCellData] = useState({});
+  const [selected, setSelected] = useState({ r: 0, c: 0 });
+  const [currentPage, setCurrentPage] = useState(0); // page index
+  const [fontFamily, setFontFamily] = useState('Arial');
+
+  const startRow = currentPage * ROWS_PER_PAGE;
+  const endRow = Math.min(startRow + ROWS_PER_PAGE, TOTAL_ROWS);
+
+  const drawGrid = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    canvas.width = CANVAS_WIDTH;
+    canvas.height = CANVAS_HEIGHT;
+    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.font = `14px ${fontFamily}`;
+    ctx.textBaseline = 'middle';
+
+    // Column headers
+    for (let c = 0; c < TOTAL_COLS; c++) {
+      const x = ROW_HEADER_WIDTH + c * COL_WIDTH;
+      ctx.fillStyle = c === selected.c ? '#90ee90' : '#f0f0f0';
+      ctx.fillRect(x, 0, COL_WIDTH, COL_HEADER_HEIGHT);
+      ctx.strokeRect(x, 0, COL_WIDTH, COL_HEADER_HEIGHT);
+      ctx.fillStyle = 'black';
+      ctx.textAlign = 'center';
+      ctx.fillText(getColLetter(c), x + COL_WIDTH / 2, COL_HEADER_HEIGHT / 2);
+    }
+
+    // Row headers + cells
+    for (let r = 0; r < ROWS_PER_PAGE; r++) {
+      const realRow = startRow + r;
+      const y = COL_HEADER_HEIGHT + r * ROW_HEIGHT;
+
+      // Row header
+      ctx.fillStyle = realRow === selected.r ? '#90ee90' : '#f0f0f0';
+      ctx.fillRect(0, y, ROW_HEADER_WIDTH, ROW_HEIGHT);
+      ctx.strokeRect(0, y, ROW_HEADER_WIDTH, ROW_HEIGHT);
+      ctx.fillStyle = 'black';
+      ctx.textAlign = 'center';
+      ctx.fillText(realRow + 1, ROW_HEADER_WIDTH / 2, y + ROW_HEIGHT / 2);
+
+      // Cells
+      for (let c = 0; c < TOTAL_COLS; c++) {
+        const x = ROW_HEADER_WIDTH + c * COL_WIDTH;
+        const key = `${realRow},${c}`;
+        const isSelected = realRow === selected.r && c === selected.c;
+
+        ctx.fillStyle = isSelected ? '#cde8ff' : 'white';
+        ctx.fillRect(x, y, COL_WIDTH, ROW_HEIGHT);
+        ctx.strokeStyle = '#ccc';
+        ctx.strokeRect(x, y, COL_WIDTH, ROW_HEIGHT);
+
+        const val = cellData[key];
+        if (val) {
+          ctx.fillStyle = 'black';
+          ctx.textAlign = 'left';
+          ctx.fillText(val, x + 4, y + ROW_HEIGHT / 2);
+        }
+      }
+    }
+  };
+
+  useEffect(() => {
+    drawGrid();
+  }, [cellData, selected, currentPage, fontFamily]);
+
+  const handleClick = (e) => {
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (x < ROW_HEADER_WIDTH || y < COL_HEADER_HEIGHT) return;
+
+    const c = Math.floor((x - ROW_HEADER_WIDTH) / COL_WIDTH);
+    const r = Math.floor((y - COL_HEADER_HEIGHT) / ROW_HEIGHT);
+    const realRow = startRow + r;
+    setSelected({ r: realRow, c });
+  };
+
+  const handleEdit = (e) => {
+    const val = e.target.value;
+    const key = `${selected.r},${selected.c}`;
+    setCellData((prev) => ({ ...prev, [key]: val }));
+  };
+
+  const handleWheel = (e) => {
+    if (e.deltaY > 0 && (startRow + ROWS_PER_PAGE < TOTAL_ROWS)) {
+      setCurrentPage((p) => p + 1);
+    } else if (e.deltaY < 0 && currentPage > 0) {
+      setCurrentPage((p) => p - 1);
+    }
+  };
+
+  return (
+    <div>
+      <Header onFontChange={setFontFamily} />
+      <div className="formula-bar">
+        <div className="cell-label">
+          {getColLetter(selected.c)}
+          {selected.r + 1}
+        </div>
+        <input
+          className="formula-input"
+          type="text"
+          value={cellData[`${selected.r},${selected.c}`] || ''}
+          onChange={handleEdit}
+        />
+      </div>
+      <div
+        style={{
+          width: CANVAS_WIDTH,
+          height: CANVAS_HEIGHT,
+          overflow: 'hidden',
+          border: '1px solid #ccc',
+        }}
+        onWheel={handleWheel}
+      >
+        <canvas ref={canvasRef} onClick={handleClick} />
+      </div>
+    </div>
+  );
+}
+.formula-bar {
+  display: flex;
+  padding: 8px;
+  background: #eee;
+  border-bottom: 1px solid #ccc;
+}
+.cell-label {
+  margin-right: 10px;
+  font-weight: bold;
+}
+.formula-input {
+  flex: 1;
+  padding: 4px;
+}
