@@ -350,8 +350,8 @@ const COL_WIDTH = 80;
 const ROW_HEIGHT = 24;
 const ROW_HEADER_WIDTH = 40;
 const COL_HEADER_HEIGHT = 24;
-const CANVAS_WIDTH = 800;
-const CANVAS_HEIGHT = 400;
+const CANVAS_WIDTH = 1695;
+const CANVAS_HEIGHT = 790;
 
 function getColLetter(n) {
   let s = '';
@@ -499,7 +499,7 @@ function StatsPanel({ stats, selection }) {
 export default function GridPage() {
   const canvasRef = useRef(null);
   const scrollContainerRef = useRef(null);
-  const [cellData, setCellData] = useState({});
+   const [cellData, setCellData] = useState(new Map());
   const [selected, setSelected] = useState({ r: 0, c: 0 });
   const [selection, setSelection] = useState({ 
     startRow: 0, 
@@ -978,7 +978,7 @@ export default function GridPage() {
       <div style={{ 
         display: 'flex', 
         gap: '16px', 
-        padding: '16px',
+        padding: '5px',
         height: 'calc(100vh - 180px)' 
       }}>
         <div style={{ position: 'relative' }}>
@@ -988,7 +988,7 @@ export default function GridPage() {
               border: '2px solid #dee2e6',
               borderRadius: '8px',
               cursor: 'cell',
-              display: 'block'
+              display: 'flex'
             }}
             tabIndex={0}
             onKeyDown={handleKeyDown}
@@ -1009,48 +1009,6 @@ export default function GridPage() {
           >
             <div style={{ height: totalScrollHeight, width: 1 }} />
           </div>
-        </div>
-
-        <div style={{ 
-          flex: 1,
-          padding: '16px',
-          background: '#f8f9fa',
-          border: '1px solid #dee2e6',
-          borderRadius: '8px',
-          overflow: 'auto'
-        }}>
-          <h3 style={{ marginTop: 0 }}>Grid Information</h3>
-          <p><strong>Total Rows:</strong> {TOTAL_ROWS.toLocaleString()}</p>
-          <p><strong>Total Columns:</strong> {TOTAL_COLS}</p>
-          <p><strong>Current Scroll:</strong> Row {Math.floor(scrollTop / ROW_HEIGHT) + 1}</p>
-          <p><strong>Selected Cell:</strong> {getColLetter(selected.c)}{selected.r + 1}</p>
-          <p><strong>Loaded Data:</strong> {Object.keys(cellData).length} cells</p>
-          <p><strong>History:</strong> {historyIndex + 1}/{history.length} states</p>
-          
-          <h4>Keyboard Shortcuts:</h4>
-          <ul style={{ fontSize: '12px', margin: 0 }}>
-            <li><strong>Ctrl+Z:</strong> Undo</li>
-            <li><strong>Ctrl+Y:</strong> Redo</li>
-            <li><strong>Ctrl+C:</strong> Copy</li>
-            <li><strong>Ctrl+X:</strong> Cut</li>
-            <li><strong>Ctrl+V:</strong> Paste</li>
-            <li><strong>Ctrl+A:</strong> Select All</li>
-            <li><strong>Delete:</strong> Clear cells</li>
-            <li><strong>Arrow Keys:</strong> Navigate</li>
-            <li><strong>Mouse Drag:</strong> Select range</li>
-          </ul>
-
-          <h4>Features:</h4>
-          <ul style={{ fontSize: '12px', margin: 0 }}>
-            <li>✅ Range selection with statistics</li>
-            <li>✅ Row/Column highlighting</li>
-            <li>✅ Undo/Redo support</li>
-            <li>✅ Copy/Cut/Paste operations</li>
-            <li>✅ Keyboard navigation</li>
-            <li>✅ Auto-scroll on navigation</li>
-            <li>✅ JSON import/export</li>
-            <li>✅ Virtual scrolling (100K rows)</li>
-          </ul>
         </div>
       </div>
     </div>
