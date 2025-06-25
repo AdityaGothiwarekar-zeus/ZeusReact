@@ -340,8 +340,99 @@ export default function GridPage() {
   flex: 1;
   padding: 4px;
 }
+/////////////////////////////////////////////// css code //////////////////////////////////////////////////////////////////
+/* GridPage.css */
+
+.gridpage-wrapper {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.header-container {
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  padding: 8px 16px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.btn-group {
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  cursor: pointer;
+}
+
+.formula-bar {
+  display: flex;
+  padding: 8px;
+  background: #eee;
+  border-bottom: 1px solid #ccc;
+  align-items: center;
+  gap: 8px;
+}
+
+.cell-label {
+  font-weight: bold;
+  min-width: 60px;
+}
+
+.formula-input {
+  flex: 1;
+  padding: 4px;
+}
+
+.stats-panel {
+  background: #e3f2fd;
+  border: 1px solid #90caf9;
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 12px;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.stats-item {
+  color: #666;
+}
+
+.canvas-container {
+  display: flex;
+  gap: 16px;
+  padding: 5px;
+  height: calc(100vh - 180px);
+}
+
+.canvas-wrapper {
+  position: relative;
+}
+
+.grid-canvas {
+  border: 2px solid #dee2e6;
+  border-radius: 8px;
+  cursor: cell;
+  display: flex;
+}
+
+.scrollbar-container {
+  position: absolute;
+  right: -20px;
+  top: 0;
+  width: 20px;
+  height: 790px; /* Matches CANVAS_HEIGHT */
+  overflow-y: scroll;
+  overflow-x: hidden;
+}
 
 /////////////////////////////////////////////// New Code //////////////////////////////////////////////////////////////////
+
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 
 const TOTAL_ROWS = 100000;
@@ -499,7 +590,8 @@ function StatsPanel({ stats, selection }) {
 export default function GridPage() {
   const canvasRef = useRef(null);
   const scrollContainerRef = useRef(null);
-   const [cellData, setCellData] = useState(new Map());
+  const cellInputRef = useRef(null);
+  const [cellData, setCellData] = useState(new Map());
   const [selected, setSelected] = useState({ r: 0, c: 0 });
   const [selection, setSelection] = useState({ 
     startRow: 0, 
@@ -514,6 +606,11 @@ export default function GridPage() {
   const [history, setHistory] = useState([{}]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [clipboard, setClipboard] = useState(null);
+  
+  // New state for direct cell editing
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
+  const [editPosition, setEditPosition] = useState({ x: 0, y: 0 });
 
   // Calculate statistics for current selection
   const stats = calculateStats(cellData, selection);
@@ -603,9 +700,9 @@ export default function GridPage() {
         ctx.strokeStyle = '#d8d9db';
         ctx.strokeRect(x, canvasY, COL_WIDTH, ROW_HEIGHT);
 
-        // Cell content
+        // Cell content (don't draw if this cell is being edited)
         const val = cellData[key];
-        if (val) {
+        if (val && !(isEditing && isCurrentCell)) {
           ctx.fillStyle = 'black';
           ctx.textAlign = 'left';
           const text = String(val).substring(0, 10);
@@ -642,7 +739,7 @@ export default function GridPage() {
         ctx.lineWidth = 1;
       }
     }
-  }, [cellData, selected, selection, scrollTop, fontFamily, getVisibleRowRange]);
+  }, [cellData, selected, selection, scrollTop, fontFamily, getVisibleRowRange, isEditing]);
 
   useEffect(() => {
     drawGrid();
@@ -654,6 +751,56 @@ export default function GridPage() {
     setHistory(newHistory);
     setHistoryIndex(newHistory.length - 1);
   }, [history, historyIndex]);
+
+  const startEditing = useCallback((row, col) => {
+    const { startRow } = getVisibleRowRange();
+    const canvasRect = canvasRef.current?.getBoundingClientRect();
+    if (!canvasRect) return;
+
+    const x = canvasRect.left + ROW_HEADER_WIDTH + col * COL_WIDTH;
+    const y = canvasRect.top + COL_HEADER_HEIGHT + ((row - startRow) * ROW_HEIGHT);
+
+    const key = `${row},${col}`;
+    const currentValue = cellData[key] || '';
+
+    setEditValue(currentValue);
+    setEditPosition({ x, y });
+    setIsEditing(true);
+    
+    // Focus the input after state update
+    setTimeout(() => {
+      if (cellInputRef.current) {
+        cellInputRef.current.focus();
+        cellInputRef.current.select();
+      }
+    }, 0);
+  }, [cellData, getVisibleRowRange]);
+
+  const finishEditing = useCallback((save = true) => {
+    if (!isEditing) return;
+
+    if (save) {
+      const key = `${selected.r},${selected.c}`;
+      const newData = { ...cellData };
+      
+      if (editValue.trim() === '') {
+        delete newData[key];
+      } else {
+        newData[key] = editValue;
+      }
+      
+      setCellData(newData);
+      addToHistory(newData);
+    }
+
+    setIsEditing(false);
+    setEditValue('');
+    
+    // Return focus to canvas
+    if (canvasRef.current) {
+      canvasRef.current.focus();
+    }
+  }, [isEditing, editValue, selected, cellData, addToHistory]);
 
   const handleMouseDown = (e) => {
     const rect = canvasRef.current.getBoundingClientRect();
@@ -668,6 +815,11 @@ export default function GridPage() {
     const r = startRow + canvasRowIndex;
 
     if (c >= 0 && c < TOTAL_COLS && r >= 0 && r < TOTAL_ROWS) {
+      // If we're currently editing, finish editing first
+      if (isEditing) {
+        finishEditing(true);
+      }
+
       setSelected({ r, c });
       setSelection({ 
         startRow: r, 
@@ -681,7 +833,7 @@ export default function GridPage() {
   };
 
   const handleMouseMove = (e) => {
-    if (!isSelecting) return;
+    if (!isSelecting || isEditing) return;
     
     const rect = canvasRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -710,15 +862,36 @@ export default function GridPage() {
     setIsSelecting(false);
   };
 
-  const handleEdit = (e) => {
-    const val = e.target.value;
-    const key = `${selected.r},${selected.c}`;
-    const newData = { ...cellData, [key]: val };
-    setCellData(newData);
-    addToHistory(newData);
+  const handleDoubleClick = (e) => {
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (x < ROW_HEADER_WIDTH || y < COL_HEADER_HEIGHT) return;
+
+    const c = Math.floor((x - ROW_HEADER_WIDTH) / COL_WIDTH);
+    const canvasRowIndex = Math.floor((y - COL_HEADER_HEIGHT) / ROW_HEIGHT);
+    const { startRow } = getVisibleRowRange();
+    const r = startRow + canvasRowIndex;
+
+    if (c >= 0 && c < TOTAL_COLS && r >= 0 && r < TOTAL_ROWS) {
+      startEditing(r, c);
+    }
   };
 
   const handleKeyDown = (e) => {
+    // If we're editing, handle edit-specific keys
+    if (isEditing) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        finishEditing(true);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        finishEditing(false);
+      }
+      return;
+    }
+
     // Handle Ctrl combinations
     if (e.ctrlKey) {
       switch (e.key.toLowerCase()) {
@@ -773,7 +946,21 @@ export default function GridPage() {
         e.preventDefault();
         handleDelete();
         return;
+      case 'Enter':
+        e.preventDefault();
+        startEditing(selected.r, selected.c);
+        return;
+      case 'F2':
+        e.preventDefault();
+        startEditing(selected.r, selected.c);
+        return;
       default:
+        // If it's a printable character, start editing
+        if (e.key.length === 1 && !e.ctrlKey && !e.altKey) {
+          e.preventDefault();
+          setEditValue(e.key);
+          startEditing(selected.r, selected.c);
+        }
         return;
     }
     
@@ -803,6 +990,11 @@ export default function GridPage() {
 
   const handleScroll = (e) => {
     setScrollTop(e.target.scrollTop);
+    
+    // If editing, close the editor when scrolling
+    if (isEditing) {
+      finishEditing(true);
+    }
   };
 
   const handleUndo = () => {
@@ -925,19 +1117,21 @@ export default function GridPage() {
       canvas.addEventListener('mousedown', handleMouseDown);
       canvas.addEventListener('mousemove', handleMouseMove);
       canvas.addEventListener('mouseup', handleMouseUp);
+      canvas.addEventListener('dblclick', handleDoubleClick);
       
       return () => {
         canvas.removeEventListener('mousedown', handleMouseDown);
         canvas.removeEventListener('mousemove', handleMouseMove);
         canvas.removeEventListener('mouseup', handleMouseUp);
+        canvas.removeEventListener('dblclick', handleDoubleClick);
       };
     }
-  }, [selected, isSelecting]);
+  }, [selected, isSelecting, isEditing]);
 
   const totalScrollHeight = TOTAL_ROWS * ROW_HEIGHT;
 
   return (
-    <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100vh', overflow: 'hidden' }}>
       <Header 
         onLoadData={handleLoadData} 
         onFontChange={setFontFamily}
@@ -950,58 +1144,52 @@ export default function GridPage() {
         onPaste={handlePaste}
         onCut={handleCut}
       />
-      
-      <div className="formula-bar" style={{
-        display: 'flex',
-        padding: '8px',
-        background: '#eee',
-        borderBottom: '1px solid #ccc',
-        alignItems: 'center',
-        gap: '8px'
+
+      <div style={{ 
+        background: '#f8f9fa', 
+        border: '1px solid #dee2e6', 
+        padding: '8px', 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: '8px' 
       }}>
-        <div className="cell-label" style={{ fontWeight: 'bold', minWidth: '60px' }}>
+        <div style={{ 
+          background: 'white', 
+          border: '1px solid #ccc', 
+          padding: '4px 8px', 
+          minWidth: '60px', 
+          textAlign: 'center' 
+        }}>
           {getColLetter(selected.c)}{selected.r + 1}
         </div>
-        <input
-          className="formula-input"
-          type="text"
-          value={cellData[`${selected.r},${selected.c}`] || ''}
-          onChange={handleEdit}
-          onKeyDown={handleKeyDown}
-          style={{ flex: 1, padding: '4px' }}
-          placeholder="Enter cell value..."
-        />
+        <div style={{ color: '#666', fontSize: '14px' }}>
+          {isEditing ? 'Editing...' : `Cell ${getColLetter(selected.c)}${selected.r + 1} selected`}
+        </div>
       </div>
 
       {stats && <StatsPanel stats={stats} selection={selection} />}
 
-      <div style={{ 
-        display: 'flex', 
-        gap: '16px', 
-        padding: '5px',
-        height: 'calc(100vh - 180px)' 
-      }}>
-        <div style={{ position: 'relative' }}>
+      <div style={{ position: 'relative', width: '100%', height: 'calc(100vh - 200px)' }}>
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
           <canvas
             ref={canvasRef}
-            style={{
-              border: '2px solid #dee2e6',
-              borderRadius: '8px',
-              cursor: 'cell',
-              display: 'flex'
+            style={{ 
+              display: 'block', 
+              border: '1px solid #ccc',
+              outline: 'none'
             }}
             tabIndex={0}
             onKeyDown={handleKeyDown}
           />
-          
+
           <div
             ref={scrollContainerRef}
             style={{
               position: 'absolute',
-              right: -20,
               top: 0,
-              width: 20,
-              height: CANVAS_HEIGHT,
+              right: 0,
+              width: '17px',
+              height: '100%',
               overflowY: 'scroll',
               overflowX: 'hidden'
             }}
@@ -1009,6 +1197,40 @@ export default function GridPage() {
           >
             <div style={{ height: totalScrollHeight, width: 1 }} />
           </div>
+
+          {/* Direct cell editing input */}
+          {isEditing && (
+            <input
+              ref={cellInputRef}
+              type="text"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  finishEditing(true);
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  finishEditing(false);
+                }
+              }}
+              onBlur={() => finishEditing(true)}
+              style={{
+                position: 'fixed',
+                left: editPosition.x,
+                top: editPosition.y,
+                width: COL_WIDTH - 2,
+                height: ROW_HEIGHT - 2,
+                border: '2px solid #107c41',
+                outline: 'none',
+                padding: '0 4px',
+                fontSize: '14px',
+                fontFamily: fontFamily,
+                zIndex: 1000,
+                background: 'white'
+              }}
+            />
+          )}
         </div>
       </div>
     </div>
