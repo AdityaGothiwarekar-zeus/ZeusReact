@@ -1444,4 +1444,177 @@ return (
     </div>
   </div>
 );
+//////////////////////////////////////////////moving ants part//////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+// 1. ADD THESE NEW STATE VARIABLES (put after your existing useState declarations)
+
+const [copiedSelection, setCopiedSelection] = useState(null);
+const [antsAnimationOffset, setAntsAnimationOffset] = useState(0);
+
+// 2. ADD THIS NEW USEEFFECT FOR ANIMATION (put after your existing useEffect declarations)
+
+useEffect(() => {
+  let animationId;
+  
+  if (copiedSelection) {
+    const animate = () => {
+      setAntsAnimationOffset(prev => (prev + 1) % 16); // 16px pattern cycle
+      animationId = requestAnimationFrame(animate);
+    };
+    animationId = requestAnimationFrame(animate);
+  }
+  
+  return () => {
+    if (animationId) {
+      cancelAnimationFrame(animationId);
+    }
+  };
+}, [copiedSelection]);
+
+// 3. UPDATE YOUR DRAWGRID FUNCTION - ADD THIS CODE BEFORE THE CLOSING BRACKET OF drawGrid
+
+// === Moving Ants Animation for Copied Cells ===
+if (copiedSelection) {
+  const { startRow, startCol, endRow, endCol } = copiedSelection;
+  
+  // Check if copied selection is visible
+  const visibleStartRow = Math.max(startRow, startRow);
+  const visibleEndRow = Math.min(endRow, endRow);
+  const visibleStartCol = Math.max(startCol, startCol);
+  const visibleEndCol = Math.min(endCol, endCol);
+
+  if (visibleStartRow <= visibleEndRow && visibleStartCol <= visibleEndCol) {
+    // Calculate positions for copied selection
+    let copyStartY = COL_HEADER_HEIGHT;
+    let copyEndY = COL_HEADER_HEIGHT;
+    
+    scrollOffsetY = 0;
+    for (let r = 0; r < startRow; r++) {
+      scrollOffsetY += rowHeights.get(r) || ROW_HEIGHT;
+    }
+    copyStartY -= (scrollTop - scrollOffsetY);
+
+    for (let r = startRow; r <= startRow; r++) {
+      if (r === startRow) break;
+      copyStartY += rowHeights.get(r) || ROW_HEIGHT;
+    }
+
+    copyEndY = copyStartY;
+    for (let r = startRow; r <= endRow; r++) {
+      copyEndY += rowHeights.get(r) || ROW_HEIGHT;
+    }
+
+    let copyStartX = ROW_HEADER_WIDTH;
+    let copyWidth = 0;
+
+    scrollOffsetX = 0;
+    for (let c = 0; c < startCol; c++) {
+      scrollOffsetX += colWidths.get(c) || COL_WIDTH;
+    }
+    copyStartX -= (scrollLeft - scrollOffsetX);
+
+    for (let c = startCol; c <= startCol; c++) {
+      if (c === startCol) break;
+      copyStartX += colWidths.get(c) || COL_WIDTH;
+    }
+
+    for (let c = startCol; c <= endCol; c++) {
+      copyWidth += colWidths.get(c) || COL_WIDTH;
+    }
+
+    // Draw moving ants border
+    if (copyStartY >= COL_HEADER_HEIGHT && copyStartX >= ROW_HEADER_WIDTH) {
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.lineDashOffset = -antsAnimationOffset;
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(copyStartX, copyStartY, copyWidth, copyEndY - copyStartY);
+      ctx.restore();
+    }
+  }
 }
+
+// 4. UPDATE YOUR HANDLECOPY FUNCTION (replace your existing handleCopy function)
+
+const handleCopy = () => {
+  const data = [];
+  for (let r = selection.startRow; r <= selection.endRow; r++) {
+    const row = [];
+    for (let c = selection.startCol; c <= selection.endCol; c++) {
+      const key = `${r},${c}`;
+      row.push(cellData[key] || '');
+    }
+    data.push(row);
+  }
+  setClipboard({ data, cut: false });
+  
+  // Set copied selection for animation
+  setCopiedSelection({
+    startRow: selection.startRow,
+    startCol: selection.startCol,
+    endRow: selection.endRow,
+    endCol: selection.endCol
+  });
+};
+
+// 5. UPDATE YOUR HANDLECUT FUNCTION (replace your existing handleCut function)
+
+const handleCut = () => {
+  handleCopy();
+  setClipboard(prev => ({ ...prev, cut: true }));
+  handleDelete();
+  
+  // Don't show animation for cut (since cells are deleted)
+  setCopiedSelection(null);
+};
+
+// 6. UPDATE YOUR HANDLEPASTE FUNCTION (replace your existing handlePaste function)
+
+const handlePaste = () => {
+  if (!clipboard) return;
+  
+  const newData = { ...cellData };
+  const { data } = clipboard;
+  
+  for (let r = 0; r < data.length; r++) {
+    for (let c = 0; c < data[r].length; c++) {
+      const targetRow = selected.r + r;
+      const targetCol = selected.c + c;
+      if (targetRow < TOTAL_ROWS && targetCol < TOTAL_COLS) {
+        const key = `${targetRow},${targetCol}`;
+        newData[key] = data[r][c];
+      }
+    }
+  }
+  
+  setCellData(newData);
+  addToHistory(newData);
+  
+  // Clear copied selection animation after paste
+  setCopiedSelection(null);
+};
+
+// 7. ADD THIS NEW FUNCTION TO CLEAR COPY SELECTION (put with your other handler functions)
+
+const clearCopySelection = () => {
+  setCopiedSelection(null);
+};
+
+// 8. UPDATE YOUR HANDLEPOINTERDOWN FUNCTION - ADD THIS LINE AT THE BEGINNING
+
+const handlePointerDown = useCallback((e) => {
+  // Clear copy selection when starting new selection
+  setCopiedSelection(null);
+  
+  // ... rest of your existing handlePointerDown code
+}, [/* your existing dependencies */]);
+
+// 9. UPDATE YOUR HANDLEKEYDOWN FUNCTION - ADD THIS CASE IN THE SWITCH STATEMENT
+
+case 'Escape':
+  e.preventDefault();
+  clearCopySelection();
+  return;
