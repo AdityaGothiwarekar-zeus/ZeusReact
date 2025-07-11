@@ -53,3 +53,7 @@ const startEditing = useCallback((row, col) => {
 
   const x = ROW_HEADER_WIDTH + col * COL_WIDTH;
   const y = COL_HEADER_HEIGHT + ((row - startRow) * ROW_HEIGHT);
+
+
+SELCETED SHAPE Z INDEX SHOULD BE ALWAYS ABOVE THE NOT SELECTED ONE
+
