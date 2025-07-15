@@ -1716,7 +1716,8 @@ import Canvas from "./Components/Canvas.jsx";
 import DraggableShape from "./Components/DraggableShape.jsx";
 import PaletteShape from "./Components/PaletteShape.jsx";
 import "./App.css";
-import { getParallelogramPath, getTrianglePath, getHexagonPath } from "./Utils.js";
+import { getParallelogramPath, getTrianglePath, getHexagonPath , getShapePoints, rotatePoints, getBoundingBox } from "./Utils.js";
+// import rotationStartedRef from "./Components/DraggableShape.jsx";
 
 const SHAPE_CONFIG = {
   size: 100,
@@ -1731,7 +1732,95 @@ const SHAPE_CONFIG = {
     triangle: "partial",       // prevent 50%+ overlap
     hexagon: "none",           // allow overlaps
   },
+  // Grid configuration
+  grid: {
+    enabled: true,
+    spacing: 50, // Distance between grid points
+    snapDistance: 75, // Maximum distance to snap to a grid point
+  }
 };
+
+// Generate grid points based on canvas dimensions
+const generateGridPoints = (canvasWidth, canvasHeight, spacing) => {
+  const points = [];
+  const cols = Math.floor(canvasWidth / spacing) + 1;
+  const rows = Math.floor(canvasHeight / spacing) + 1;
+  
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      points.push({
+        x: col * spacing,
+        y: row * spacing
+      });
+    }
+  }
+  return points;
+};
+
+// Calculate Euclidean distance between two points
+const calculateDistance = (point1, point2) => {
+  const dx = point1.x - point2.x;
+  const dy = point1.y - point2.y;
+  return Math.sqrt(dx * dx + dy * dy);
+};
+
+// Find the nearest grid point to a given position
+const findNearestGridPoint = (position, gridPoints, maxDistance = Infinity) => {
+  let nearestPoint = null;
+  let minDistance = maxDistance;
+  
+  for (const gridPoint of gridPoints) {
+    const distance = calculateDistance(position, gridPoint);
+    if (distance < minDistance) {
+      minDistance = distance;
+      nearestPoint = gridPoint;
+    }
+  }
+  
+  return nearestPoint;
+};
+
+// Get snapped position based on shape center and grid
+// const getSnappedPosition = (shapeCenter, canvasWidth, canvasHeight, shapeSize) => {
+//   if (!SHAPE_CONFIG.grid.enabled) return null;
+  
+//   const gridPoints = generateGridPoints(canvasWidth, canvasHeight, SHAPE_CONFIG.grid.spacing);
+//   const nearestPoint = findNearestGridPoint(shapeCenter, gridPoints, SHAPE_CONFIG.grid.snapDistance);
+  
+//   if (nearestPoint) {
+//     // Convert grid point to shape position (top-left corner)
+//     return {
+//       x: Math.max(0, Math.min(nearestPoint.x - shapeSize / 2, canvasWidth - shapeSize)),
+//       y: Math.max(0, Math.min(nearestPoint.y - shapeSize / 2, canvasHeight - shapeSize))
+//     };
+//   }
+  
+//   return null;
+// };
+const getSnappedPosition = (shapeCenter, canvasWidth, canvasHeight, shapeSize, shapeId = null, shapeType = null) => {
+  if (!SHAPE_CONFIG.grid.enabled) return null;
+  
+  const gridPoints = generateGridPoints(canvasWidth, canvasHeight, SHAPE_CONFIG.grid.spacing);
+  const nearestPoint = findNearestGridPoint(shapeCenter, gridPoints, SHAPE_CONFIG.grid.snapDistance);
+  
+  if (nearestPoint) {
+    // Convert grid point to shape position (top-left corner)
+    const candidatePosition = {
+      x: Math.max(0, Math.min(nearestPoint.x - shapeSize / 2, canvasWidth - shapeSize)),
+      y: Math.max(0, Math.min(nearestPoint.y - shapeSize / 2, canvasHeight - shapeSize))
+    };
+    
+    // Check if this position would cause collision with existing shapes
+    if (shapeId && shapeType && wouldCollideWithExisting(candidatePosition.x, candidatePosition.y, shapeId, shapeType)) {
+      return null; // Don't snap if it would cause collision
+    }
+    
+    return candidatePosition;
+  }
+  
+  return null;
+};
+
 
 export default function App() {
   const [droppedShapes, setDroppedShapes] = useState([]);
@@ -1739,7 +1828,7 @@ export default function App() {
   const [draggingShapeId, setDraggingShapeId] = useState(null);
   const [selectedShapeId, setSelectedShapeId] = useState(null);
   const [selectedPaletteShape, setSelectedPaletteShape] = useState(null);
-  const [selectedCanvasShape, setSelectedCanvasShape] = useState(null); // New state for canvas shape selection
+  const [selectedCanvasShape, setSelectedCanvasShape] = useState(null);
   const [pendingShape, setPendingShape] = useState(null);
   const [isDraggingFromPalette, setIsDraggingFromPalette] = useState(false);
   const canvasRef = useRef(null);
@@ -1747,30 +1836,108 @@ export default function App() {
   const rotationDataRef = useRef({ isRotating: false, shapeId: null, center: { x: 0, y: 0 }, startAngle: 0, initialRotation: 0 });
   const visualPositionRef = useRef({});
   const collisionPauseRef = useRef({});
+  const [rotationStarted, setRotationStarted] = useState(false);
 
   const getSnapPosition = (type) => SHAPE_CONFIG.snapOffsets[type] || { x: 0, y: 0 };
   const isSnapped = (x, y, snapX, snapY, tol = 5) => Math.abs(x - snapX) <= tol && Math.abs(y - snapY) <= tol;
 
-  const isColliding = (newX, newY, shapeId, shapeType) => {
-    const size = SHAPE_CONFIG.size;
-    const policy = SHAPE_CONFIG.collisionPolicies[shapeType];
-    if (policy === "none") return false;
+  // const isColliding = (newX, newY, shapeId, shapeType) => {
+  //   const size = SHAPE_CONFIG.size;
+  //   const policy = SHAPE_CONFIG.collisionPolicies[shapeType];
+  //   if (policy === "none") return false;
 
-    return droppedShapes.some((shape) => {
-      if (shape.id === shapeId) return false;
-      const other = shape.position;
-      const overlapW = Math.max(0, Math.min(newX + size, other.x + size) - Math.max(newX, other.x));
-      const overlapH = Math.max(0, Math.min(newY + size, other.y + size) - Math.max(newY, other.y));
-      const overlapArea = overlapW * overlapH;
-      const totalArea = size * size;
+  //   return droppedShapes.some((shape) => {
+  //     if (shape.id === shapeId) return false;
+  //     const other = shape.position;
+  //     const overlapW = Math.max(0, Math.min(newX + size, other.x + size) - Math.max(newX, other.x));
+  //     const overlapH = Math.max(0, Math.min(newY + size, other.y + size) - Math.max(newY, other.y));
+  //     const overlapArea = overlapW * overlapH;
+  //     const totalArea = size * size;
 
-      if (isSnapped(other.x, other.y, getSnapPosition(shape.type).x, getSnapPosition(shape.type).y)) return false;
+  //     if (isSnapped(other.x, other.y, getSnapPosition(shape.type).x, getSnapPosition(shape.type).y)) return false;
 
-      if (policy === "strict") return overlapArea > 0;
-      if (policy === "partial") return overlapArea > 0.5 * totalArea;
-      return false;
-    });
-  };
+  //     if (policy === "strict") return overlapArea > 0;
+  //     if (policy === "partial") return overlapArea > 0.5 * totalArea;
+  //     return false;
+  //   });
+  // };
+// Updated isColliding function - replace the existing one
+
+
+// Replace your existing functions with these in this exact order:
+
+// 1. First, add the wouldCollideWithExisting function
+const wouldCollideWithExisting = (newX, newY, shapeId, shapeType) => {
+  const size = SHAPE_CONFIG.size;
+  const policy = SHAPE_CONFIG.collisionPolicies[shapeType];
+  if (policy === "none") return false;
+
+  return droppedShapes.some((shape) => {
+    if (shape.id === shapeId) return false;
+    
+    const other = shape.position;
+    const overlapW = Math.max(0, Math.min(newX + size, other.x + size) - Math.max(newX, other.x));
+    const overlapH = Math.max(0, Math.min(newY + size, other.y + size) - Math.max(newY, other.y));
+    const overlapArea = overlapW * overlapH;
+    const totalArea = size * size;
+
+    if (policy === "strict") return overlapArea > 0;
+    if (policy === "partial") return overlapArea > 0.5 * totalArea;
+    return false;
+  });
+};
+
+// 2. Then update the isColliding function
+const isColliding = (newX, newY, shapeId, shapeType) => {
+  const size = SHAPE_CONFIG.size;
+  const policy = SHAPE_CONFIG.collisionPolicies[shapeType];
+  if (policy === "none") return false;
+
+  return droppedShapes.some((shape) => {
+    if (shape.id === shapeId) return false;
+    
+    const other = shape.position;
+    const overlapW = Math.max(0, Math.min(newX + size, other.x + size) - Math.max(newX, other.x));
+    const overlapH = Math.max(0, Math.min(newY + size, other.y + size) - Math.max(newY, other.y));
+    const overlapArea = overlapW * overlapH;
+    const totalArea = size * size;
+
+    // Don't consider collision if the other shape is snapped to its designated position
+    const otherSnapPos = getSnapPosition(shape.type);
+    if (isSnapped(other.x, other.y, otherSnapPos.x, otherSnapPos.y)) return false;
+
+    if (policy === "strict") return overlapArea > 0;
+    if (policy === "partial") return overlapArea > 0.5 * totalArea;
+    return false;
+  });
+};
+
+// 3. Update the getSnappedPosition function
+const getSnappedPosition = (shapeCenter, canvasWidth, canvasHeight, shapeSize, shapeId = null, shapeType = null) => {
+  if (!SHAPE_CONFIG.grid.enabled) return null;
+  
+  const gridPoints = generateGridPoints(canvasWidth, canvasHeight, SHAPE_CONFIG.grid.spacing);
+  const nearestPoint = findNearestGridPoint(shapeCenter, gridPoints, SHAPE_CONFIG.grid.snapDistance);
+  
+  if (nearestPoint) {
+    // Convert grid point to shape position (top-left corner)
+    const candidatePosition = {
+      x: Math.max(0, Math.min(nearestPoint.x - shapeSize / 2, canvasWidth - shapeSize)),
+      y: Math.max(0, Math.min(nearestPoint.y - shapeSize / 2, canvasHeight - shapeSize))
+    };
+    
+    // Check if this position would cause collision with existing shapes
+    if (shapeId && shapeType && wouldCollideWithExisting(candidatePosition.x, candidatePosition.y, shapeId, shapeType)) {
+      return null; // Don't snap if it would cause collision
+    }
+    
+    return candidatePosition;
+  }
+  
+  return null;
+};
+
+
 
   // Handle palette shape double-click
   const handlePaletteDoubleClick = (type, imageSrc) => (e) => {
@@ -1778,20 +1945,84 @@ export default function App() {
     e.stopPropagation();
     
     if (selectedPaletteShape?.type === type) {
-      // Deselect if already selected
       setSelectedPaletteShape(null);
     } else {
-      // Select the palette shape
       setSelectedPaletteShape({ type, imageSrc });
-      setSelectedCanvasShape(null); // Clear canvas shape selection
-      setPendingShape(null); // Clear any pending shape
+      setSelectedCanvasShape(null);
+      setPendingShape(null);
     }
   };
 
-  // Handle canvas double-click to render selected shape (palette or canvas)
+  // Handle canvas double-click to render selected shape
+  // const handleCanvasDoubleClick = (e) => {
+  //   if (draggingShapeId || rotationDataRef.current.isRotating || isDraggingFromPalette) return;
+  //   if (e.target.closest('[data-shape-id]')) return;
+
+  //   const bounds = canvasRef.current.getBoundingClientRect();
+  //   const canvasX = e.clientX - bounds.left - SHAPE_CONFIG.size / 2;
+  //   const canvasY = e.clientY - bounds.top - SHAPE_CONFIG.size / 2;
+
+  //   const clampedX = Math.max(0, Math.min(canvasX, bounds.width - SHAPE_CONFIG.size));
+  //   const clampedY = Math.max(0, Math.min(canvasY, bounds.height - SHAPE_CONFIG.size));
+
+  //   // Calculate shape center for grid snapping
+  //   const shapeCenter = {
+  //     x: clampedX + SHAPE_CONFIG.size / 2,
+  //     y: clampedY + SHAPE_CONFIG.size / 2
+  //   };
+
+  //   // Get snapped position
+  //   const snappedPosition = getSnappedPosition(shapeCenter, bounds.width, bounds.height, SHAPE_CONFIG.size);
+  //   const finalPosition = snappedPosition || { x: clampedX, y: clampedY };
+
+  //   // If a canvas shape is selected, move it to new location
+  //   if (selectedCanvasShape) {
+  //     setDroppedShapes((prev) =>
+  //       prev.map((shape) => {
+  //         if (shape.id === selectedCanvasShape.id) {
+  //           const tempShape = {
+  //             ...shape,
+  //             position: finalPosition,
+  //             rotation: 0,
+  //           };
+
+  //           const shouldClip = checkShapeFit(tempShape);
+
+  //           return {
+  //             ...shape,
+  //             position: shouldClip ? getSnapPosition(shape.type) : finalPosition,
+  //             rotation: shouldClip ? 0 : shape.rotation,
+  //             animate: shouldClip,
+  //           };
+  //         }
+  //         return shape;
+  //       })
+  //     );
+
+  //     setSelectedCanvasShape(null);
+  //     setSelectedShapeId(null);
+  //     return;
+  //   }
+
+  //   // Create pending shape if palette shape is selected
+  //   if (selectedPaletteShape) {
+  //     const pendingShapeData = {
+  //       id: `pending-${Date.now()}`,
+  //       type: selectedPaletteShape.type,
+  //       imageSrc: selectedPaletteShape.imageSrc,
+  //       position: finalPosition,
+  //       rotation: 0,
+  //       animate: false,
+  //       isSelected: false,
+  //       isPending: true,
+  //     };
+
+  //     setPendingShape(pendingShapeData);
+  //     setSelectedPaletteShape(null);
+  //   }
+  // };
   const handleCanvasDoubleClick = (e) => {
   if (draggingShapeId || rotationDataRef.current.isRotating || isDraggingFromPalette) return;
-
   if (e.target.closest('[data-shape-id]')) return;
 
   const bounds = canvasRef.current.getBoundingClientRect();
@@ -1801,14 +2032,37 @@ export default function App() {
   const clampedX = Math.max(0, Math.min(canvasX, bounds.width - SHAPE_CONFIG.size));
   const clampedY = Math.max(0, Math.min(canvasY, bounds.height - SHAPE_CONFIG.size));
 
-  // ✅ If a canvas shape is selected, move it to new location and return
+  // Calculate shape center for grid snapping
+  const shapeCenter = {
+    x: clampedX + SHAPE_CONFIG.size / 2,
+    y: clampedY + SHAPE_CONFIG.size / 2
+  };
+
+  // If a canvas shape is selected, move it to new location
   if (selectedCanvasShape) {
+    // Get snapped position with collision check
+    const snappedPosition = getSnappedPosition(
+      shapeCenter, 
+      bounds.width, 
+      bounds.height, 
+      SHAPE_CONFIG.size, 
+      selectedCanvasShape.id, 
+      selectedCanvasShape.type
+    );
+    
+    let finalPosition = { x: clampedX, y: clampedY };
+    
+    // Only use snapped position if it doesn't cause collision
+    if (snappedPosition && !wouldCollideWithExisting(snappedPosition.x, snappedPosition.y, selectedCanvasShape.id, selectedCanvasShape.type)) {
+      finalPosition = snappedPosition;
+    }
+
     setDroppedShapes((prev) =>
       prev.map((shape) => {
         if (shape.id === selectedCanvasShape.id) {
           const tempShape = {
             ...shape,
-            position: { x: clampedX, y: clampedY },
+            position: finalPosition,
             rotation: 0,
           };
 
@@ -1816,7 +2070,7 @@ export default function App() {
 
           return {
             ...shape,
-            position: shouldClip ? getSnapPosition(shape.type) : { x: clampedX, y: clampedY },
+            position: shouldClip ? getSnapPosition(shape.type) : finalPosition,
             rotation: shouldClip ? 0 : shape.rotation,
             animate: shouldClip,
           };
@@ -1827,16 +2081,33 @@ export default function App() {
 
     setSelectedCanvasShape(null);
     setSelectedShapeId(null);
-    return; // ✅ Prevents any new shape creation
+    return;
   }
 
-  // ✅ Only if no canvas shape is selected, check for selected palette shape
+  // Create pending shape if palette shape is selected
   if (selectedPaletteShape) {
+    // Get snapped position with collision check
+    const snappedPosition = getSnappedPosition(
+      shapeCenter, 
+      bounds.width, 
+      bounds.height, 
+      SHAPE_CONFIG.size, 
+      null, 
+      selectedPaletteShape.type
+    );
+    
+    let finalPosition = { x: clampedX, y: clampedY };
+    
+    // Only use snapped position if it doesn't cause collision
+    if (snappedPosition && !wouldCollideWithExisting(snappedPosition.x, snappedPosition.y, null, selectedPaletteShape.type)) {
+      finalPosition = snappedPosition;
+    }
+
     const pendingShapeData = {
       id: `pending-${Date.now()}`,
       type: selectedPaletteShape.type,
       imageSrc: selectedPaletteShape.imageSrc,
-      position: { x: clampedX, y: clampedY },
+      position: finalPosition,
       rotation: 0,
       animate: false,
       isSelected: false,
@@ -1844,21 +2115,65 @@ export default function App() {
     };
 
     setPendingShape(pendingShapeData);
-    setSelectedPaletteShape(null); // Clear palette selection
+    setSelectedPaletteShape(null);
   }
 };
 
+  // Handle canvas single click to place selected shape
+  // const handleCanvasClick = (e) => {
+  //   if (rotationStarted) {
+  //   setRotationStarted(false);
+  //   return; // suppress click
+  // }
+  //   if (draggingShapeId || rotationDataRef.current.isRotating || isDraggingFromPalette || pendingShape) return;
+  //   if (!selectedCanvasShape) return;
 
-  // Handle canvas single click to place selected shape immediately
+  //   const bounds = canvasRef.current.getBoundingClientRect();
+  //   const canvasX = e.clientX - bounds.left - SHAPE_CONFIG.size / 2;
+  //   const canvasY = e.clientY - bounds.top - SHAPE_CONFIG.size / 2;
+  //   const clampedX = Math.max(0, Math.min(canvasX, bounds.width - SHAPE_CONFIG.size));
+  //   const clampedY = Math.max(0, Math.min(canvasY, bounds.height - SHAPE_CONFIG.size));
+
+  //   // Calculate shape center for grid snapping
+  //   const shapeCenter = {
+  //     x: clampedX + SHAPE_CONFIG.size / 2,
+  //     y: clampedY + SHAPE_CONFIG.size / 2
+  //   };
+
+  //   // Get snapped position
+  //   const snappedPosition = getSnappedPosition(shapeCenter, bounds.width, bounds.height, SHAPE_CONFIG.size);
+  //   const finalPosition = snappedPosition || { x: clampedX, y: clampedY };
+
+  //   setDroppedShapes((prevShapes) =>
+  //     prevShapes.map((shape) => {
+  //       if (shape.id === selectedCanvasShape.id) {
+  //         const tempShape = {
+  //           ...shape,
+  //           position: finalPosition,
+  //         };
+
+  //         const shouldClip = checkShapeFit(tempShape);
+
+  //         return {
+  //           ...shape,
+  //           position: shouldClip ? getSnapPosition(shape.type) : finalPosition,
+  //           rotation: shouldClip ? 0 : shape.rotation,
+  //           animate: shouldClip,
+  //         };
+  //       }
+  //       return shape;
+  //     })
+  //   );
+
+  //   setSelectedCanvasShape(null);
+  //   setSelectedShapeId(null);
+  // };
   const handleCanvasClick = (e) => {
-  if (
-    draggingShapeId ||
-    rotationDataRef.current.isRotating ||
-    isDraggingFromPalette ||
-    pendingShape
-  )
-    return;
-
+  if (rotationStarted) {
+    setRotationStarted(false);
+    return; // suppress click
+  }
+  if (draggingShapeId || rotationDataRef.current.isRotating || isDraggingFromPalette || pendingShape) return;
   if (!selectedCanvasShape) return;
 
   const bounds = canvasRef.current.getBoundingClientRect();
@@ -1867,34 +2182,50 @@ export default function App() {
   const clampedX = Math.max(0, Math.min(canvasX, bounds.width - SHAPE_CONFIG.size));
   const clampedY = Math.max(0, Math.min(canvasY, bounds.height - SHAPE_CONFIG.size));
 
-  const tempShape = {
-    type: selectedCanvasShape.type,
-    position: { x: clampedX, y: clampedY },
-    rotation: 0,
+  // Calculate shape center for grid snapping
+  const shapeCenter = {
+    x: clampedX + SHAPE_CONFIG.size / 2,
+    y: clampedY + SHAPE_CONFIG.size / 2
   };
 
-  const shouldClip = checkShapeFit(tempShape);
+  // Get snapped position with collision check
+  const snappedPosition = getSnappedPosition(
+    shapeCenter, 
+    bounds.width, 
+    bounds.height, 
+    SHAPE_CONFIG.size, 
+    selectedCanvasShape.id, 
+    selectedCanvasShape.type
+  );
+  
+  let finalPosition = { x: clampedX, y: clampedY };
+  
+  // Only use snapped position if it doesn't cause collision
+  if (snappedPosition && !wouldCollideWithExisting(snappedPosition.x, snappedPosition.y, selectedCanvasShape.id, selectedCanvasShape.type)) {
+    finalPosition = snappedPosition;
+  }
 
-  const finalShape = {
-    id: Date.now(), // new ID
-    type: selectedCanvasShape.type,
-    imageSrc: selectedCanvasShape.imageSrc,
-    position: shouldClip ? getSnapPosition(selectedCanvasShape.type) : { x: clampedX, y: clampedY },
-    rotation: shouldClip ? 0 : 0,
-    animate: shouldClip,
-    isSelected: false,
-    isPending: false,
-  };
+  setDroppedShapes((prevShapes) =>
+    prevShapes.map((shape) => {
+      if (shape.id === selectedCanvasShape.id) {
+        const tempShape = {
+          ...shape,
+          position: finalPosition,
+        };
 
-  // 🔥 Remove the old shape
-  setDroppedShapes((prev) =>
-    [
-      ...prev.filter((s) => s.id !== selectedCanvasShape.id),
-      finalShape
-    ]
+        const shouldClip = checkShapeFit(tempShape);
+
+        return {
+          ...shape,
+          position: shouldClip ? getSnapPosition(shape.type) : finalPosition,
+          rotation: shouldClip ? 0 : shape.rotation,
+          animate: shouldClip,
+        };
+      }
+      return shape;
+    })
   );
 
-  // ❌ Clear selection
   setSelectedCanvasShape(null);
   setSelectedShapeId(null);
 };
@@ -1903,14 +2234,11 @@ export default function App() {
   const handlePendingShapeClick = (e) => {
     e.stopPropagation();
     if (pendingShape) {
-      const bounds = canvasRef.current.getBoundingClientRect();
-      
-      // Check if the pending shape should be clipped (snapped to fit position)
       const shouldClip = checkShapeFit(pendingShape);
       
       const finalShape = {
         ...pendingShape,
-        id: Date.now(), // Give it a proper ID
+        id: Date.now(),
         isPending: false,
         animate: shouldClip,
         position: shouldClip ? getSnapPosition(pendingShape.type) : pendingShape.position,
@@ -1922,7 +2250,7 @@ export default function App() {
     }
   };
 
-  // Check if a shape fits within the designated area (same logic as draggable)
+  // Check if a shape fits within the designated area
   const checkShapeFit = (shape) => {
     const canvas = canvasRef.current;
     const canvasElement = canvas.querySelector("canvas");
@@ -1988,10 +2316,20 @@ export default function App() {
         const clampedX = Math.max(0, Math.min(canvasX, bounds.width - SHAPE_CONFIG.size));
         const clampedY = Math.max(0, Math.min(canvasY, bounds.height - SHAPE_CONFIG.size));
         
-        // Check if the shape should be clipped (snapped to fit position)
+        // Calculate shape center for grid snapping
+        const shapeCenter = {
+          x: clampedX + SHAPE_CONFIG.size / 2,
+          y: clampedY + SHAPE_CONFIG.size / 2
+        };
+
+        // Get snapped position
+        const snappedPosition = getSnappedPosition(shapeCenter, bounds.width, bounds.height, SHAPE_CONFIG.size);
+        const finalPosition = snappedPosition || { x: clampedX, y: clampedY };
+        
+        // Check if the shape should be clipped
         const tempShape = {
           type,
-          position: { x: clampedX, y: clampedY },
+          position: finalPosition,
           rotation: 0,
         };
         
@@ -2003,7 +2341,7 @@ export default function App() {
             id,
             type,
             imageSrc,
-            position: shouldClip ? getSnapPosition(type) : { x: clampedX, y: clampedY },
+            position: shouldClip ? getSnapPosition(type) : finalPosition,
             rotation: shouldClip ? 0 : 0,
             animate: shouldClip,
             isSelected: false,
@@ -2024,154 +2362,354 @@ export default function App() {
   const getAngle = (center, x, y) => Math.atan2(y - center.y, x - center.x) * (180 / Math.PI);
   const normalizeAngle = (angle) => ((angle % 360) + 360) % 360;
 
+  // const handleMouseMove = useCallback((e) => {
+  //   if (!dragDataRef.current.isDragging) return;
+  //   const { shapeId, offset } = dragDataRef.current;
+  //   const shape = droppedShapes.find((s) => s.id === shapeId);
+  //   if (!shape || collisionPauseRef.current[shapeId]) return;
+
+  //   const canvasBounds = canvasRef.current.getBoundingClientRect();
+  //   let toX = e.clientX - canvasBounds.left - offset.x;
+  //   let toY = e.clientY - canvasBounds.top - offset.y;
+  //   const size = SHAPE_CONFIG.size;
+
+  //   toX = Math.max(0, Math.min(toX, canvasBounds.width - size));
+  //   toY = Math.max(0, Math.min(toY, canvasBounds.height - size));
+
+  //   if (isColliding(toX, toY, shapeId, shape.type)) {
+  //     if (collisionPauseRef.current[shapeId]) return;
+  //     collisionPauseRef.current[shapeId] = true;
+  //     setTimeout(() => {
+  //       collisionPauseRef.current[shapeId] = false;
+  //     }, 10000);
+  //     return;
+  //   }
+
+  //   visualPositionRef.current[shapeId] = { x: toX, y: toY };
+  //   setDroppedShapes((prev) =>
+  //     prev.map((s) => (s.id === shapeId ? { ...s, position: { x: toX, y: toY } } : s))
+  //   );
+  // }, [droppedShapes]);
   const handleMouseMove = useCallback((e) => {
-    if (!dragDataRef.current.isDragging) return;
-    const { shapeId, offset } = dragDataRef.current;
-    const shape = droppedShapes.find((s) => s.id === shapeId);
-    if (!shape || collisionPauseRef.current[shapeId]) return;
+  if (!dragDataRef.current.isDragging) return;
+  const { shapeId, offset } = dragDataRef.current;
+  const shape = droppedShapes.find((s) => s.id === shapeId);
+  if (!shape || collisionPauseRef.current[shapeId]) return;
 
-    const canvasBounds = canvasRef.current.getBoundingClientRect();
-    let toX = e.clientX - canvasBounds.left - offset.x;
-    let toY = e.clientY - canvasBounds.top - offset.y;
-    const size = SHAPE_CONFIG.size;
+  const canvasBounds = canvasRef.current.getBoundingClientRect();
+  let toX = e.clientX - canvasBounds.left - offset.x;
+  let toY = e.clientY - canvasBounds.top - offset.y;
+  const size = SHAPE_CONFIG.size;
 
-    toX = Math.max(0, Math.min(toX, canvasBounds.width - size));
-    toY = Math.max(0, Math.min(toY, canvasBounds.height - size));
+  toX = Math.max(0, Math.min(toX, canvasBounds.width - size));
+  toY = Math.max(0, Math.min(toY, canvasBounds.height - size));
 
-    if (isColliding(toX, toY, shapeId, shape.type)) {
-      if (collisionPauseRef.current[shapeId]) return;
-      collisionPauseRef.current[shapeId] = true;
-      setTimeout(() => {
+  if (isColliding(toX, toY, shapeId, shape.type)) {
+    if (collisionPauseRef.current[shapeId]) return;
+    collisionPauseRef.current[shapeId] = true;
+    setTimeout(() => {
       collisionPauseRef.current[shapeId] = false;
     }, 10000);
-      return;
+    return;
+  }
+
+  visualPositionRef.current[shapeId] = { x: toX, y: toY };
+  setDroppedShapes((prev) =>
+    prev.map((s) => (s.id === shapeId ? { ...s, position: { x: toX, y: toY } } : s))
+  );
+}, [droppedShapes]);
+
+
+ // Modified handleMouseUp function - replace the existing one
+// const handleMouseUp = useCallback(() => {
+//   if (!dragDataRef.current.isDragging) return;
+
+//   const { shapeId } = dragDataRef.current;
+//   const canvas = canvasRef.current;
+//   const canvasBounds = canvas.getBoundingClientRect();
+//   const ctx = canvas.querySelector("canvas").getContext("2d");
+
+//   const checkFit = (shape) => {
+//     const cx = shape.position.x + SHAPE_CONFIG.size / 2;
+//     const cy = shape.position.y + SHAPE_CONFIG.size / 2;
+//     const paths = {
+//       parallelogram: getParallelogramPath,
+//       triangle: getTrianglePath,
+//       hexagon: getHexagonPath,
+//     };
+//     const path = paths[shape.type]?.(40);
+//     const angle = normalizeAngle(shape.rotation);
+//     const fitsRotation =
+//       angle <= SHAPE_CONFIG.rotationTolerance ||
+//       angle >= 360 - SHAPE_CONFIG.rotationTolerance;
+
+//     ctx.save();
+//     ctx.translate(cx, cy);
+//     ctx.rotate((shape.rotation * Math.PI) / 180);
+//     ctx.translate(-cx, -cy);
+//     const fit = ctx.isPointInPath(path, cx, cy);
+//     ctx.restore();
+
+//     return fit && fitsRotation;
+//   };
+
+//   setDroppedShapes((prevShapes) => {
+//     let updated = prevShapes.map((s) => {
+//       if (s.id !== shapeId) return s;
+      
+//       // Only apply grid snapping if the shape has no rotation or minimal rotation
+//       const normalizedRotation = normalizeAngle(s.rotation);
+//       const isNearZeroRotation = normalizedRotation <= SHAPE_CONFIG.rotationTolerance || 
+//                                 normalizedRotation >= 360 - SHAPE_CONFIG.rotationTolerance;
+      
+//       let finalPosition = s.position;
+      
+//       // Apply grid snapping only for non-rotated shapes
+//       if (isNearZeroRotation) {
+//         const shapeCenter = {
+//           x: s.position.x + SHAPE_CONFIG.size / 2,
+//           y: s.position.y + SHAPE_CONFIG.size / 2
+//         };
+        
+//         const snappedPosition = getSnappedPosition(shapeCenter, canvasBounds.width, canvasBounds.height, SHAPE_CONFIG.size);
+//         finalPosition = snappedPosition || s.position;
+//       }
+      
+//       const updatedShape = { ...s, position: finalPosition };
+      
+//       if (checkFit(updatedShape)) {
+//         return {
+//           ...updatedShape,
+//           animate: true,
+//           rotation: 0,
+//           position: getSnapPosition(s.type),
+//         };
+//       }
+//       return updatedShape;
+//     });
+
+//     // Rest of the function remains the same...
+//     const toRemove = new Set();
+//     const flashSet = new Set();
+//     const shapesByType = new Map();
+
+//     for (const shape of updated) {
+//       if (!shapesByType.has(shape.type)) {
+//         shapesByType.set(shape.type, []);
+//       }
+//       shapesByType.get(shape.type).push(shape);
+//     }
+
+//     for (const [, group] of shapesByType) {
+//       const len = group.length;
+//       for (let i = 0; i < len; i++) {
+//         const a = group[i];
+//         for (let j = i + 1; j < len; j++) {
+//           const b = group[j];
+//           if (toRemove.has(a.id) || toRemove.has(b.id)) continue;
+
+//           const overlapW = Math.max(
+//             0,
+//             Math.min(a.position.x + SHAPE_CONFIG.size, b.position.x + SHAPE_CONFIG.size) -
+//               Math.max(a.position.x, b.position.x)
+//           );
+//           const overlapH = Math.max(
+//             0,
+//             Math.min(a.position.y + SHAPE_CONFIG.size, b.position.y + SHAPE_CONFIG.size) -
+//               Math.max(a.position.y, b.position.y)
+//           );
+//           const overlapArea = overlapW * overlapH;
+//           const totalArea = SHAPE_CONFIG.size * SHAPE_CONFIG.size;
+
+//           if (overlapArea > 0.2 * totalArea) {
+//             const centerX = a.position.x;
+//             const centerY = a.position.y;
+//             a.position = { x: centerX, y: centerY };
+
+//             flashSet.add(b.id);
+//             toRemove.add(b.id);
+//           }
+//         }
+//       }
+//     }
+
+//     // Flash animation
+//     flashSet.forEach((id) => {
+//       const el = document.getElementById(`shape-${id}`);
+//       if (el) {
+//         el.classList.add("shape-flash");
+//         setTimeout(() => el.classList.remove("shape-flash"), 100);
+//       }
+//     });
+
+//     setTimeout(() => {
+//       setDroppedShapes((prevFinal) =>
+//         prevFinal.filter((s) => !toRemove.has(s.id))
+//       );
+//     }, 500);
+
+//     return updated;
+//   });
+
+//   delete visualPositionRef.current[shapeId];
+//   delete collisionPauseRef.current[shapeId];
+//   dragDataRef.current = {
+//     isDragging: false,
+//     shapeId: null,
+//     offset: { x: 0, y: 0 },
+//   };
+//   setDraggingShapeId(null);
+// }, [normalizeAngle]);
+const handleMouseUp = useCallback(() => {
+  if (!dragDataRef.current.isDragging) return;
+
+  const { shapeId } = dragDataRef.current;
+  const canvas = canvasRef.current;
+  const canvasBounds = canvas.getBoundingClientRect();
+  const ctx = canvas.querySelector("canvas").getContext("2d");
+
+  const checkFit = (shape) => {
+    const cx = shape.position.x + SHAPE_CONFIG.size / 2;
+    const cy = shape.position.y + SHAPE_CONFIG.size / 2;
+    const paths = {
+      parallelogram: getParallelogramPath,
+      triangle: getTrianglePath,
+      hexagon: getHexagonPath,
+    };
+    const path = paths[shape.type]?.(40);
+    const angle = normalizeAngle(shape.rotation);
+    const fitsRotation =
+      angle <= SHAPE_CONFIG.rotationTolerance ||
+      angle >= 360 - SHAPE_CONFIG.rotationTolerance;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate((shape.rotation * Math.PI) / 180);
+    ctx.translate(-cx, -cy);
+    const fit = ctx.isPointInPath(path, cx, cy);
+    ctx.restore();
+
+    return fit && fitsRotation;
+  };
+
+  setDroppedShapes((prevShapes) => {
+    let updated = prevShapes.map((s) => {
+      if (s.id !== shapeId) return s;
+      
+      // Only apply grid snapping if the shape has no rotation or minimal rotation
+      const normalizedRotation = normalizeAngle(s.rotation);
+      const isNearZeroRotation = normalizedRotation <= SHAPE_CONFIG.rotationTolerance || 
+                                normalizedRotation >= 360 - SHAPE_CONFIG.rotationTolerance;
+      
+      let finalPosition = s.position;
+      
+      // Apply grid snapping only for non-rotated shapes and check for collisions
+      if (isNearZeroRotation) {
+        const shapeCenter = {
+          x: s.position.x + SHAPE_CONFIG.size / 2,
+          y: s.position.y + SHAPE_CONFIG.size / 2
+        };
+        
+        const snappedPosition = getSnappedPosition(
+          shapeCenter, 
+          canvasBounds.width, 
+          canvasBounds.height, 
+          SHAPE_CONFIG.size, 
+          s.id, 
+          s.type
+        );
+        
+        // Only use snapped position if it doesn't cause collision
+        if (snappedPosition && !wouldCollideWithExisting(snappedPosition.x, snappedPosition.y, s.id, s.type)) {
+          finalPosition = snappedPosition;
+        }
+      }
+      
+      const updatedShape = { ...s, position: finalPosition };
+      
+      if (checkFit(updatedShape)) {
+        return {
+          ...updatedShape,
+          animate: true,
+          rotation: 0,
+          position: getSnapPosition(s.type),
+        };
+      }
+      return updatedShape;
+    });
+
+    // Rest of the collision detection logic remains the same
+    const toRemove = new Set();
+    const flashSet = new Set();
+    const shapesByType = new Map();
+
+    for (const shape of updated) {
+      if (!shapesByType.has(shape.type)) {
+        shapesByType.set(shape.type, []);
+      }
+      shapesByType.get(shape.type).push(shape);
     }
 
-    visualPositionRef.current[shapeId] = { x: toX, y: toY };
-    setDroppedShapes((prev) =>
-      prev.map((s) => (s.id === shapeId ? { ...s, position: { x: toX, y: toY } } : s))
-    );
-  }, [droppedShapes]);
+    for (const [, group] of shapesByType) {
+      const len = group.length;
+      for (let i = 0; i < len; i++) {
+        const a = group[i];
+        for (let j = i + 1; j < len; j++) {
+          const b = group[j];
+          if (toRemove.has(a.id) || toRemove.has(b.id)) continue;
 
-    const handleMouseUp = useCallback(() => {
-      if (!dragDataRef.current.isDragging) return;
-
-      const { shapeId } = dragDataRef.current;
-      const canvas = canvasRef.current;
-      const ctx = canvas.querySelector("canvas").getContext("2d");
-
-      const checkFit = (shape) => {
-        const cx = shape.position.x + SHAPE_CONFIG.size / 2;
-        const cy = shape.position.y + SHAPE_CONFIG.size / 2;
-        const paths = {
-          parallelogram: getParallelogramPath,
-          triangle: getTrianglePath,
-          hexagon: getHexagonPath,
-        };
-        const path = paths[shape.type]?.(40);
-        const angle = normalizeAngle(shape.rotation);
-        const fitsRotation =
-          angle <= SHAPE_CONFIG.rotationTolerance ||
-          angle >= 360 - SHAPE_CONFIG.rotationTolerance;
-
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate((shape.rotation * Math.PI) / 180);
-        ctx.translate(-cx, -cy);
-        const fit = ctx.isPointInPath(path, cx, cy);
-        ctx.restore();
-
-        return fit && fitsRotation;
-      };
-
-      setDroppedShapes((prevShapes) => {
-        let updated = prevShapes.map((s) => {
-          if (s.id !== shapeId) return s;
-          if (checkFit(s)) {
-            return {
-              ...s,
-              animate: true,
-              rotation: 0,
-              position: getSnapPosition(s.type),
-            };
-          }
-          return s;
-        });
-
-        const toRemove = new Set();
-        const flashSet = new Set();
-        const shapesByType = new Map();
-
-        for (const shape of updated) {
-          if (!shapesByType.has(shape.type)) {
-            shapesByType.set(shape.type, []);
-          }
-          shapesByType.get(shape.type).push(shape);
-        }
-
-        for (const [, group] of shapesByType) {
-          const len = group.length;
-          for (let i = 0; i < len; i++) {
-            const a = group[i];
-            for (let j = i + 1; j < len; j++) {
-              const b = group[j];
-              if (toRemove.has(a.id) || toRemove.has(b.id)) continue;
-
-              const overlapW = Math.max(
-                0,
-                Math.min(a.position.x + SHAPE_CONFIG.size, b.position.x + SHAPE_CONFIG.size) -
-                  Math.max(a.position.x, b.position.x)
-              );
-              const overlapH = Math.max(
-                0,
-                Math.min(a.position.y + SHAPE_CONFIG.size, b.position.y + SHAPE_CONFIG.size) -
-                  Math.max(a.position.y, b.position.y)
-              );
-              const overlapArea = overlapW * overlapH;
-              const totalArea = SHAPE_CONFIG.size * SHAPE_CONFIG.size;
-
-              if (overlapArea > 0.2 * totalArea) {
-                // const centerX = (a.position.x + b.position.x) / 2;
-                // const centerY = (a.position.y + b.position.y) / 2;
-                const centerX = a.position.x ;
-                const centerY = a.position.y ;
-                a.position = { x: centerX, y: centerY };
-
-                flashSet.add(b.id);
-                toRemove.add(b.id);
-              }
-            }
-          }
-        }
-
-        // Flash animation
-        flashSet.forEach((id) => {
-          const el = document.getElementById(`shape-${id}`);
-          if (el) {
-            el.classList.add("shape-flash");
-            setTimeout(() => el.classList.remove("shape-flash"), 100);
-          }
-        });
-
-        setTimeout(() => {
-          setDroppedShapes((prevFinal) =>
-            prevFinal.filter((s) => !toRemove.has(s.id))
+          const overlapW = Math.max(
+            0,
+            Math.min(a.position.x + SHAPE_CONFIG.size, b.position.x + SHAPE_CONFIG.size) -
+              Math.max(a.position.x, b.position.x)
           );
-        }, 500);
+          const overlapH = Math.max(
+            0,
+            Math.min(a.position.y + SHAPE_CONFIG.size, b.position.y + SHAPE_CONFIG.size) -
+              Math.max(a.position.y, b.position.y)
+          );
+          const overlapArea = overlapW * overlapH;
+          const totalArea = SHAPE_CONFIG.size * SHAPE_CONFIG.size;
 
-        return updated;
-      });
+          if (overlapArea > 0.2 * totalArea) {
+            const centerX = a.position.x;
+            const centerY = a.position.y;
+            a.position = { x: centerX, y: centerY };
 
-      delete visualPositionRef.current[shapeId];
-      delete collisionPauseRef.current[shapeId];
-      dragDataRef.current = {
-        isDragging: false,
-        shapeId: null,
-        offset: { x: 0, y: 0 },
-      };
-      setDraggingShapeId(null);
-    }, [normalizeAngle]);
+            flashSet.add(b.id);
+            toRemove.add(b.id);
+          }
+        }
+      }
+    }
 
+    // Flash animation
+    flashSet.forEach((id) => {
+      const el = document.getElementById(`shape-${id}`);
+      if (el) {
+        el.classList.add("shape-flash");
+        setTimeout(() => el.classList.remove("shape-flash"), 100);
+      }
+    });
+
+    setTimeout(() => {
+      setDroppedShapes((prevFinal) =>
+        prevFinal.filter((s) => !toRemove.has(s.id))
+      );
+    }, 500);
+
+    return updated;
+  });
+
+  delete visualPositionRef.current[shapeId];
+  delete collisionPauseRef.current[shapeId];
+  dragDataRef.current = {
+    isDragging: false,
+    shapeId: null,
+    offset: { x: 0, y: 0 },
+  };
+  setDraggingShapeId(null);
+}, [normalizeAngle]);
 
   const handleRotateMove = useCallback((x, y) => {
     if (!rotationDataRef.current.isRotating) return;
@@ -2185,6 +2723,7 @@ export default function App() {
   }, []);
 
   const handleRotateStart = (shapeId) => (center, startX, startY) => {
+    setRotationStarted(true);
     const shape = droppedShapes.find((s) => s.id === shapeId);
     if (!shape) return;
     rotationDataRef.current = {
@@ -2230,40 +2769,41 @@ export default function App() {
     setDraggingShapeId(shapeId);
   };
 
-const handleDoubleClick = (id) => () => {
-  const shape = droppedShapes.find((s) => s.id === id);
-  if (!shape) return;
+  const handleDoubleClick = (id) => () => {
+    const shape = droppedShapes.find((s) => s.id === id);
+    if (!shape) return;
 
-  // Always clear palette shape selection when a canvas shape is selected
-  setSelectedPaletteShape(null); // ✅ ✅ ✅ IMPORTANT FIX
+    setSelectedPaletteShape(null);
 
-  if (selectedCanvasShape && selectedCanvasShape.id === id) {
-    setSelectedCanvasShape(null);
-  } else {
+    if (selectedCanvasShape && selectedCanvasShape.id === id) {
+      setSelectedCanvasShape(null);
+    } else {
+      setSelectedCanvasShape({
+        id: shape.id,
+        type: shape.type,
+        imageSrc: shape.imageSrc,
+      });
+    }
+
+    setSelectedShapeId((prev) => (prev === id ? null : id));
+  };
+
+  const handleCanvasShapeClick = (id) => () => {
+    const shape = droppedShapes.find((s) => s.id === id);
+    if (rotationStarted) {
+    setRotationStarted(false);
+    return; // suppress click
+  }
+    if (!shape) return;
+
     setSelectedCanvasShape({
       id: shape.id,
       type: shape.type,
       imageSrc: shape.imageSrc,
     });
-  }
-
-  setSelectedShapeId((prev) => (prev === id ? null : id));
-};
-const handleCanvasShapeClick = (id) => () => {
-  const shape = droppedShapes.find((s) => s.id === id);
-  if (!shape) return;
-
-  setSelectedCanvasShape({
-    id: shape.id,
-    type: shape.type,
-    imageSrc: shape.imageSrc,
-  });
-  setSelectedPaletteShape(null);
-  setSelectedShapeId(id);
-};
-
-
-
+    setSelectedPaletteShape(null);
+    setSelectedShapeId(id);
+  };
 
   useEffect(() => {
     if (draggingShapeId !== null) {
@@ -2381,7 +2921,7 @@ const handleCanvasShapeClick = (id) => () => {
                   whiteSpace: "nowrap",
                 }}
               >
-                Will Snap to Fit!
+                
               </div>
             )}
           </div>
@@ -2686,6 +3226,419 @@ export default function DraggableShape({
         return (
           <svg style={baseStyle} viewBox="0 0 100 100">
             <polygon points="15,5 95,5 85,95 5,95" transform="rotate(4 60 60)" />
+          </svg>
+        );
+      case "trapezoid":
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <polygon points="25,10 75,10 90,90 10,90" />
+          </svg>
+        );
+      case "square":
+      case "rectangle":
+      default:
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <rect x="5" y="5" width="90" height="90" />
+          </svg>
+        );
+    }
+  };
+
+  return (
+    <div
+      ref={shapeRef}
+      data-shape-id={id}
+      className={`shape-wrapper ${animate ? 'animate' : ''}`}
+      style={{
+        position: "absolute",
+        left: position.x,
+        top: position.y,
+        transform: `rotate(${rotation}deg)`,
+        transformOrigin: "center center",
+        width: "100px",
+        height: "100px",
+        zIndex: 1,
+        backgroundColor: "transparent",
+        cursor: isSelected ? "pointer" : "grab",
+        filter: isDragging ? "drop-shadow(4px 4px 10px rgba(0,0,0,0.4))" : "none",
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onMouseDown={handleMouseDown}
+      onDoubleClick={handleDoubleClick}
+      onClick={(e) => {
+    e.stopPropagation(); // prevent bubbling to canvas
+    if (onClick) onClick(e); // ✅ call shape click handler
+  }}
+    >
+      <img
+        src={imageSrc}
+        alt={`Draggable ${type}`}
+        style={{
+          width: "100%",
+          height: "100%",
+          userSelect: "none",
+          pointerEvents: "none",
+          opacity: isSelected ? 0.9 : 1,
+          position: "relative",
+          zIndex: 1,
+        }}
+        draggable={false}
+      />
+
+      {/* Custom border based on shape type */}
+      {getBorderStyle()}
+
+      {(hovered || isSelected) && (
+        <>
+          {/* Rotate icon (top-right) */}
+          <div
+            className="rotate-icon"
+            onMouseDown={handleRotateMouseDown}
+            style={{
+              position: "absolute",
+              top: "-10px",
+              right: "-10px",
+              backgroundColor: "#fff",
+              borderRadius: "50%",
+              padding: "4px",
+              boxShadow: "0 0 5px rgba(0,0,0,0.3)",
+              cursor: "grab",
+              zIndex: 10,
+            }}
+          >
+            <RotateCw size={16} />
+          </div>
+
+          {/* Delete icon (bottom-left) */}
+          <div
+            className="delete-icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onDelete) onDelete();
+            }}
+            style={{
+              position: "absolute",
+              bottom: "-10px",
+              left: "-10px",
+              backgroundColor: "#fff",
+              borderRadius: "50%",
+              padding: "4px",
+              boxShadow: "0 0 5px rgba(0,0,0,0.3)",
+              cursor: "pointer",
+              zIndex: 10,
+            }}
+          >
+            <Trash2 size={16} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+///////////////////////////updated code/////////////////////
+// Replace your existing functions with these in this exact order:
+
+// 1. First, add the wouldCollideWithExisting function
+const wouldCollideWithExisting = (newX, newY, shapeId, shapeType) => {
+  const size = SHAPE_CONFIG.size;
+  const policy = SHAPE_CONFIG.collisionPolicies[shapeType];
+  if (policy === "none") return false;
+
+  return droppedShapes.some((shape) => {
+    if (shape.id === shapeId) return false;
+    
+    const other = shape.position;
+    const overlapW = Math.max(0, Math.min(newX + size, other.x + size) - Math.max(newX, other.x));
+    const overlapH = Math.max(0, Math.min(newY + size, other.y + size) - Math.max(newY, other.y));
+    const overlapArea = overlapW * overlapH;
+    const totalArea = size * size;
+
+    if (policy === "strict") return overlapArea > 0;
+    if (policy === "partial") return overlapArea > 0.5 * totalArea;
+    return false;
+  });
+};
+
+// 2. Then update the isColliding function
+const isColliding = (newX, newY, shapeId, shapeType) => {
+  const size = SHAPE_CONFIG.size;
+  const policy = SHAPE_CONFIG.collisionPolicies[shapeType];
+  if (policy === "none") return false;
+
+  return droppedShapes.some((shape) => {
+    if (shape.id === shapeId) return false;
+    
+    const other = shape.position;
+    const overlapW = Math.max(0, Math.min(newX + size, other.x + size) - Math.max(newX, other.x));
+    const overlapH = Math.max(0, Math.min(newY + size, other.y + size) - Math.max(newY, other.y));
+    const overlapArea = overlapW * overlapH;
+    const totalArea = size * size;
+
+    // Don't consider collision if the other shape is snapped to its designated position
+    const otherSnapPos = getSnapPosition(shape.type);
+    if (isSnapped(other.x, other.y, otherSnapPos.x, otherSnapPos.y)) return false;
+
+    if (policy === "strict") return overlapArea > 0;
+    if (policy === "partial") return overlapArea > 0.5 * totalArea;
+    return false;
+  });
+};
+
+// 3. Update the getSnappedPosition function
+const getSnappedPosition = (shapeCenter, canvasWidth, canvasHeight, shapeSize, shapeId = null, shapeType = null) => {
+  if (!SHAPE_CONFIG.grid.enabled) return null;
+  
+  const gridPoints = generateGridPoints(canvasWidth, canvasHeight, SHAPE_CONFIG.grid.spacing);
+  const nearestPoint = findNearestGridPoint(shapeCenter, gridPoints, SHAPE_CONFIG.grid.snapDistance);
+  
+  if (nearestPoint) {
+    // Convert grid point to shape position (top-left corner)
+    const candidatePosition = {
+      x: Math.max(0, Math.min(nearestPoint.x - shapeSize / 2, canvasWidth - shapeSize)),
+      y: Math.max(0, Math.min(nearestPoint.y - shapeSize / 2, canvasHeight - shapeSize))
+    };
+    
+    // Check if this position would cause collision with existing shapes
+    if (shapeId && shapeType && wouldCollideWithExisting(candidatePosition.x, candidatePosition.y, shapeId, shapeType)) {
+      return null; // Don't snap if it would cause collision
+    }
+    
+    return candidatePosition;
+  }
+  
+  return null;
+};
+
+// 4. Update handleMouseMove
+const handleMouseMove = useCallback((e) => {
+  if (!dragDataRef.current.isDragging) return;
+  const { shapeId, offset } = dragDataRef.current;
+  const shape = droppedShapes.find((s) => s.id === shapeId);
+  if (!shape || collisionPauseRef.current[shapeId]) return;
+
+  const canvasBounds = canvasRef.current.getBoundingClientRect();
+  let toX = e.clientX - canvasBounds.left - offset.x;
+  let toY = e.clientY - canvasBounds.top - offset.y;
+  const size = SHAPE_CONFIG.size;
+
+  toX = Math.max(0, Math.min(toX, canvasBounds.width - size));
+  toY = Math.max(0, Math.min(toY, canvasBounds.height - size));
+
+  if (isColliding(toX, toY, shapeId, shape.type)) {
+    if (collisionPauseRef.current[shapeId]) return;
+    collisionPauseRef.current[shapeId] = true;
+    setTimeout(() => {
+      collisionPauseRef.current[shapeId] = false;
+    }, 10000);
+    return;
+  }
+
+  visualPositionRef.current[shapeId] = { x: toX, y: toY };
+  setDroppedShapes((prev) =>
+    prev.map((s) => (s.id === shapeId ? { ...s, position: { x: toX, y: toY } } : s))
+  );
+}, [droppedShapes]);
+
+// 5. Update handleMouseUp function
+const handleMouseUp = useCallback(() => {
+  if (!dragDataRef.current.isDragging) return;
+
+  const { shapeId } = dragDataRef.current;
+  const canvas = canvasRef.current;
+  const canvasBounds = canvas.getBoundingClientRect();
+  const ctx = canvas.querySelector("canvas").getContext("2d");
+
+  const checkFit = (shape) => {
+    const cx = shape.position.x + SHAPE_CONFIG.size / 2;
+    const cy = shape.position.y + SHAPE_CONFIG.size / 2;
+    const paths = {
+      parallelogram: getParallelogramPath,
+      triangle: getTrianglePath,
+      hexagon: getHexagonPath,
+    };
+    const path = paths[shape.type]?.(40);
+    const angle = normalizeAngle(shape.rotation);
+    const fitsRotation = checkShapeFit(ctx, cx, cy, path, angle);
+    return fitsRotation;
+  };
+
+  setDroppedShapes((prev) => {
+    return prev.map((shape) => {
+      if (shape.id !== shapeId) return shape;
+
+      const currentPos = visualPositionRef.current[shapeId] || shape.position;
+      const shapeCenter = {
+        x: currentPos.x + SHAPE_CONFIG.size / 2,
+        y: currentPos.y + SHAPE_CONFIG.size / 2,
+      };
+
+      const snappedPos = getSnappedPosition(
+        shapeCenter,
+        canvasBounds.width,
+        canvasBounds.height,
+        SHAPE_CONFIG.size,
+        shapeId,
+        shape.type
+      );
+
+      if (snappedPos) {
+        const snappedShape = { ...shape, position: snappedPos };
+        if (checkFit(snappedShape)) {
+          return snappedShape;
+        }
+      }
+
+      return { ...shape, position: currentPos };
+    });
+  });
+
+  dragDataRef.current = { isDragging: false, shapeId: null, offset: { x: 0, y: 0 } };
+}, []);
+
+// Make sure these functions are also defined in your component:
+// - generateGridPoints
+// - findNearestGridPoint
+// - getSnapPosition
+// - isSnapped
+// - normalizeAngle
+// - checkShapeFit
+// - getParallelogramPath
+// - getTrianglePath
+// - getHexagonPath
+//////////////////////////////draggable///////////////////////////
+import React, { useState, useRef } from "react";
+import { RotateCw, Trash2 } from "lucide-react";
+import id from "../App"
+
+export default function DraggableShape({
+  type,
+  position,
+  onMouseDown,
+  onDoubleClick,
+  imageSrc,
+  rotation = 0,
+  onRotateStart,
+  onRotateMove,
+  onRotateEnd,
+  animate = false,
+  isSelected = false,
+  isDragging = false,
+  onDelete,
+  onClick,
+}) {
+  const [hovered, setHovered] = useState(false);
+  const shapeRef = useRef(null);
+
+  const handleRotateMouseDown = (e) => {
+    e.stopPropagation();
+    if (!shapeRef.current) return;
+
+    const rect = shapeRef.current.getBoundingClientRect();
+    const center = {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    };
+
+    onRotateStart(center, e.clientX, e.clientY);
+
+    const handleMouseMove = (moveEvent) => {
+      onRotateMove(moveEvent.clientX, moveEvent.clientY);
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      onRotateEnd();
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  const handleMouseDown = (e) => {
+    if (e.detail === 2) {
+      e.preventDefault();
+      return;
+    }
+    if (onMouseDown) {
+      onMouseDown(e);
+    }
+  };
+
+  const handleDoubleClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    requestAnimationFrame(() => {
+      if (onDoubleClick) {
+        onDoubleClick(e);
+      }
+    });
+  };
+
+  // Get border style based on shape type
+  const getBorderStyle = () => {
+    const baseStyle = {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width: "100%",
+      height: "100%",
+      pointerEvents: "none",
+      stroke: "red",
+      strokeWidth: 2,
+      strokeDasharray: "5,5",
+      fill: "none",
+    };
+
+    switch (type?.toLowerCase()) {
+      case "triangle":
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <polygon points="50,5 95,80 5,80" />
+          </svg>
+        );
+      case "hexagon":
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <polygon points="50,5 85,25 85,75 50,95 15,75 15,25" transform="rotate(4 60 60)"/>
+          </svg>
+        );
+      case "circle":
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="45" />
+          </svg>
+        );
+      case "diamond":
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <polygon points="50,5 95,50 50,95 5,50" />
+          </svg>
+        );
+      case "pentagon":
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <polygon points="50,5 90,35 75,85 25,85 10,35" />
+          </svg>
+        );
+      case "octagon":
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <polygon points="30,5 70,5 95,30 95,70 70,95 30,95 5,70 5,30" />
+          </svg>
+        );
+      case "star":
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <polygon points="50,2 61,35 ,35 68,57 79,91 50,69 21,91 32,57 5,35 39,35" />
+          </svg>
+        );
+      case "parallelogram":
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <polygon points="15,5 95,2 80,150 5,95" transform="rotate(4 60 60)" />
           </svg>
         );
       case "trapezoid":
